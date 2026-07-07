@@ -1,0 +1,50 @@
+{
+  "learned_today": 4,
+  "daily_goal": 10,
+  "current_streak": 4,
+  "best_streak": 90,
+  "history": [
+    {
+      "date": "29 Jun",
+      "new": 10,
+      "review": 70,
+      "known": 0
+    },
+    {
+      "date": "30 Jun",
+      "new": 10,
+      "review": 40,
+      "known": 1
+    },
+    {
+      "date": "1 Jul",
+      "new": 0,
+      "review": 0,
+      "known": 0
+    },
+    {
+      "date": "2 Jul",
+      "new": 10,
+      "review": 109,
+      "known": 0
+    },
+    {
+      "date": "3 Jul",
+      "new": 10,
+      "review": 0,
+      "known": 2
+    },
+    {
+      "date": "4 Jul",
+      "new": 10,
+      "review": 80,
+      "known": 0
+    },
+    {
+      "date": "5 Jul",
+      "new": 10,
+      "review": 50,
+      "known": 1
+    }
+  ]
+}
