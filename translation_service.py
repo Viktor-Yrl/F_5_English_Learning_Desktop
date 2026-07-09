@@ -52,3 +52,8 @@ def translate_text(provider: str, text: str, settings_getter) -> str:
 def reverso_context_url(text: str, source_lang: str = "english", target_lang: str = "russian") -> str:
     query = urllib.parse.quote((text or "").strip())
     return f"https://context.reverso.net/translation/{source_lang}-{target_lang}/{query}"
+
+
+def deepl_web_url(text: str, source_lang: str = "en", target_lang: str = "ru") -> str:
+    query = urllib.parse.quote((text or "").strip())
+    return f"https://www.deepl.com/translator#{source_lang}/{target_lang}/{query}"

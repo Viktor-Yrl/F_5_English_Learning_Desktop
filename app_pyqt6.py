@@ -12,7 +12,7 @@ import db as database
 import services
 import settings_service
 import translation_service
-from PyQt6.QtCore import QPointF, QRectF, QSize, QUrl, Qt, QThread, pyqtSignal
+from PyQt6.QtCore import QPointF, QRectF, QSize, QTimer, QUrl, Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QColor, QDesktopServices, QPainter, QPalette, QPen, QPixmap, QPolygonF
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtSql import QSqlDatabase, QSqlTableModel
@@ -414,7 +414,10 @@ class WordEditDialog(QDialog):
         auto_translate.clicked.connect(self.auto_translate)
         reverso = QPushButton("Open in Reverso Context")
         reverso.clicked.connect(self.open_reverso_context)
+        deepl = QPushButton("Open in DeepL")
+        deepl.clicked.connect(self.open_deepl)
         translate_row.addStretch(1)
+        translate_row.addWidget(deepl)
         translate_row.addWidget(reverso)
         translate_row.addWidget(auto_translate)
         layout.addLayout(translate_row)
@@ -454,7 +457,11 @@ class WordEditDialog(QDialog):
             QDialog, QWidget {{ background: {COLORS['bg']}; color: {COLORS['text']}; font-family: Segoe UI; font-size: 14px; }}
             QLineEdit {{ background: {COLORS['panel']}; color: {COLORS['text']}; border: 1px solid {COLORS['line']}; border-radius: 10px; padding: 11px 14px; font-size: 16px; }}
             QPushButton {{ background: {COLORS['panel']}; color: {COLORS['text']}; border: 1px solid {COLORS['line']}; border-radius: 8px; padding: 10px 16px; font-weight: 600; }}
+            QPushButton:hover {{ background: {COLORS['blue_soft']}; border-color: {COLORS['blue']}; color: {COLORS['blue']}; }}
+            QPushButton:pressed {{ background: {COLORS['blue']}; border-color: {COLORS['blue']}; color: #ffffff; }}
             QPushButton#primary {{ background: {COLORS['blue']}; color: #ffffff; border-color: {COLORS['blue']}; }}
+            QPushButton#primary:hover {{ background: {COLORS['blue']}; color: #ffffff; border-color: {COLORS['blue']}; }}
+            QPushButton#primary:pressed {{ background: #1d55d3; color: #ffffff; border-color: #1d55d3; }}
             """
         )
         self.refresh_image_preview()
@@ -524,6 +531,14 @@ class WordEditDialog(QDialog):
             QMessageBox.information(self, "Reverso Context", "Enter an English word first.")
             return
         url = translation_service.reverso_context_url(word)
+        QDesktopServices.openUrl(QUrl(url))
+
+    def open_deepl(self) -> None:
+        word = self.word_input.text().strip()
+        if not word:
+            QMessageBox.information(self, "DeepL", "Enter an English word first.")
+            return
+        url = translation_service.deepl_web_url(word)
         QDesktopServices.openUrl(QUrl(url))
 
     def refresh_image_preview(self) -> None:
@@ -724,6 +739,33 @@ class PlayButton(QPushButton):
             QPointF(29, 21),
         ])
         painter.drawPolygon(triangle)
+
+
+class EyeRevealButton(QPushButton):
+    def __init__(self):
+        super().__init__("")
+        self.setFixedSize(42, 42)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Show mnemonic image, translation and examples")
+        self.setStyleSheet("background: transparent; border: 0;")
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pressed = self.isDown()
+        hovered = self.underMouse()
+        bg = "#6d8cff" if pressed else "#263251" if hovered else "#1b1e25"
+        border = "#6d8cff" if hovered or pressed else "#343946"
+        text_color = "#ffffff" if pressed else "#8fa6ff"
+        painter.setPen(QPen(QColor(border), 1.2))
+        painter.setBrush(QColor(bg))
+        painter.drawRoundedRect(QRectF(1, 1, self.width() - 2, self.height() - 2), 10, 10)
+
+        painter.setPen(QPen(QColor(text_color), 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(QRectF(10, 14, 22, 14))
+        painter.setBrush(QColor(text_color))
+        painter.drawEllipse(QRectF(19, 19, 4, 4))
 
 
 class SidebarIcon(QWidget):
@@ -2149,6 +2191,13 @@ class MainWindow(QMainWindow):
             return
         QDesktopServices.openUrl(QUrl(translation_service.reverso_context_url(word)))
 
+    def open_current_deepl(self) -> None:
+        word = getattr(self, "current_english_word", "").strip()
+        if not word:
+            QMessageBox.information(self, "DeepL", "Choose a word first.")
+            return
+        QDesktopServices.openUrl(QUrl(translation_service.deepl_web_url(word)))
+
     def build_learn_page(self) -> QWidget:
         page = QWidget()
         page.setObjectName("studyPage")
@@ -2162,7 +2211,6 @@ class MainWindow(QMainWindow):
         title = QLabel("Study")
         title.setStyleSheet("background: transparent; color: #f5f6f8; font-size: 26px; font-weight: 900;")
         header.addWidget(title)
-        header.addStretch(1)
 
         tabs = QFrame()
         tabs.setObjectName("studyTabs")
@@ -2184,6 +2232,7 @@ class MainWindow(QMainWindow):
         self.review_badge.setMinimumWidth(78)
         self.review_badge.setStyleSheet("background: #263251; color: #6d8cff; border: 1px solid #344161; border-radius: 18px; padding: 0 16px; font-size: 14px; font-weight: 800;")
         header.addWidget(self.review_badge)
+        header.addStretch(1)
         layout.addLayout(header)
 
         progress = QHBoxLayout()
@@ -2197,11 +2246,6 @@ class MainWindow(QMainWindow):
         progress_left.addWidget(self.study_counter_label)
         progress_left.addWidget(self.daily_goal_marks)
         progress.addLayout(progress_left, 1)
-        undo_btn = QPushButton("↶")
-        undo_btn.setFixedSize(44, 40)
-        undo_btn.setStyleSheet("background: transparent; border: 0; color: #6d8cff; font-size: 30px;")
-        undo_btn.clicked.connect(self.pick_random_word)
-        progress.addWidget(undo_btn, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(progress)
 
         body = QHBoxLayout()
@@ -2210,6 +2254,8 @@ class MainWindow(QMainWindow):
         left_card = QFrame()
         left_card.setObjectName("studyCard")
         left_card.setStyleSheet("QFrame#studyCard { background: #20232b; border: 1px solid #333846; border-radius: 12px; }")
+        left_card.setMinimumWidth(520)
+        left_card.setMaximumWidth(640)
         left = QVBoxLayout(left_card)
         left.setContentsMargins(22, 18, 22, 18)
         left.setSpacing(14)
@@ -2235,6 +2281,9 @@ class MainWindow(QMainWindow):
         word_row.addLayout(word_texts, 1)
         play_word = PlayButton()
         play_word.clicked.connect(lambda: self.pronounce_english(getattr(self, "current_english_word", "")))
+        self.reveal_details_btn = EyeRevealButton()
+        self.reveal_details_btn.clicked.connect(self.reveal_current_word_details)
+        word_row.addWidget(self.reveal_details_btn, 0, Qt.AlignmentFlag.AlignTop)
         word_row.addWidget(play_word, 0, Qt.AlignmentFlag.AlignTop)
         left.addLayout(word_row)
 
@@ -2252,12 +2301,12 @@ class MainWindow(QMainWindow):
         self.translation_label.setStyleSheet("background: #1b1e25; border: 1px solid #343946; border-radius: 8px; color: #f5f6f8; padding: 12px; font-size: 21px;")
         left.addWidget(self.translation_label)
 
-        input_caption = QLabel("Type translation")
+        input_caption = QLabel("Type English word")
         input_caption.setStyleSheet("background: transparent; color: #9da5b4; font-size: 13px;")
         left.addWidget(input_caption)
         self.answer = QLineEdit()
-        self.answer.setPlaceholderText("Type translation")
-        self.answer.returnPressed.connect(self.check_answer)
+        self.answer.setPlaceholderText("Type English word")
+        self.answer.returnPressed.connect(self.start_learning_or_check)
         self.answer.setStyleSheet("background: #171a20; color: #f5f6f8; border: 1px solid #4d64a3; border-radius: 8px; padding: 10px 12px; font-size: 16px;")
         left.addWidget(self.answer)
 
@@ -2370,29 +2419,29 @@ class MainWindow(QMainWindow):
         known_prev_layout = QHBoxLayout(known_prev_group)
         known_prev_layout.setContentsMargins(0, 0, 0, 0)
         known_prev_layout.setSpacing(0)
-        known_btn = QPushButton("I already know\nthis word")
-        known_btn.setMinimumSize(176, 56)
-        known_btn.setStyleSheet(joined_known_style)
-        known_btn.clicked.connect(self.mark_current_known)
-        prev_btn = QPushButton("‹")
-        prev_btn.setFixedSize(58, 56)
-        prev_btn.setStyleSheet(joined_prev_style)
-        prev_btn.clicked.connect(self.pick_random_word)
-        known_prev_layout.addWidget(known_btn)
-        known_prev_layout.addWidget(prev_btn)
-        next_btn = QPushButton("›")
-        next_btn.setFixedSize(58, 56)
-        next_btn.setStyleSheet(arrow_button_style)
-        next_btn.clicked.connect(self.pick_random_word)
-        check = QPushButton("Start learning\nthis word")
-        check.setMinimumSize(182, 56)
-        check.setStyleSheet(primary_action_style)
-        check.clicked.connect(self.check_answer)
+        self.known_btn = QPushButton("I already know\nthis word")
+        self.known_btn.setMinimumSize(176, 56)
+        self.known_btn.setStyleSheet(joined_known_style)
+        self.known_btn.clicked.connect(self.mark_current_known)
+        self.prev_btn = QPushButton("‹")
+        self.prev_btn.setFixedSize(58, 56)
+        self.prev_btn.setStyleSheet(joined_prev_style)
+        self.prev_btn.clicked.connect(self.pick_random_word)
+        known_prev_layout.addWidget(self.known_btn)
+        known_prev_layout.addWidget(self.prev_btn)
+        self.next_btn = QPushButton("›")
+        self.next_btn.setFixedSize(58, 56)
+        self.next_btn.setStyleSheet(arrow_button_style)
+        self.next_btn.clicked.connect(self.pick_random_word)
+        self.check_button = QPushButton("Start learning\nthis word")
+        self.check_button.setMinimumSize(182, 56)
+        self.check_button.setStyleSheet(primary_action_style)
+        self.check_button.clicked.connect(self.start_learning_or_check)
         bottom.addWidget(known_prev_group)
         bottom.addStretch(1)
-        bottom.addWidget(next_btn)
+        bottom.addWidget(self.next_btn)
         bottom.addStretch(1)
-        bottom.addWidget(check)
+        bottom.addWidget(self.check_button)
         left.addLayout(bottom)
 
         self.attempts_label = QLabel("Attempts left: 3")
@@ -2401,6 +2450,14 @@ class MainWindow(QMainWindow):
         self.result_label.setWordWrap(True)
         self.result_label.setStyleSheet("background: transparent; color: #6d8cff; font-size: 15px;")
         left.addWidget(self.result_label)
+        self.goal_banner = QLabel("")
+        self.goal_banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.goal_banner.hide()
+        self.goal_banner.setStyleSheet(
+            "background: #263251; color: #ffffff; border: 1px solid #6d8cff; "
+            "border-radius: 12px; padding: 14px; font-size: 18px; font-weight: 900;"
+        )
+        left.addWidget(self.goal_banner)
         left.addStretch(1)
 
         right_col = QVBoxLayout()
@@ -2425,7 +2482,7 @@ class MainWindow(QMainWindow):
         details_layout.addLayout(details_header)
         self.mnemonic_preview = QLabel("No mnemonic image")
         self.mnemonic_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.mnemonic_preview.setMinimumHeight(116)
+        self.mnemonic_preview.setMinimumHeight(240)
         self.mnemonic_preview.setStyleSheet("background: #1b1e25; border: 1px dashed #3d4350; border-radius: 8px; color: #9da5b4; font-size: 14px;")
         details_layout.addWidget(self.mnemonic_preview)
 
@@ -2442,21 +2499,46 @@ class MainWindow(QMainWindow):
         details_layout.addWidget(self.example_label)
 
         details_buttons = QHBoxLayout()
+        detail_button_style = """
+            QPushButton {
+                background: #1b1e25;
+                color: #dfe5f0;
+                border: 1px solid #343946;
+                border-radius: 8px;
+                padding: 10px;
+                font-size: 14px;
+                font-weight: 700;
+            }
+            QPushButton:hover {
+                background: #26345b;
+                color: #86a0ff;
+                border-color: #6d8cff;
+            }
+            QPushButton:pressed {
+                background: #6d8cff;
+                color: #ffffff;
+                border-color: #6d8cff;
+            }
+        """
         edit_word = QPushButton("Edit word")
-        edit_word.setStyleSheet("background: #1b1e25; color: #dfe5f0; border: 1px solid #343946; border-radius: 8px; padding: 10px; font-size: 14px;")
+        edit_word.setStyleSheet(detail_button_style)
         edit_word.clicked.connect(self.edit_current_word)
         reverso = QPushButton("Open Reverso ↗")
-        reverso.setStyleSheet("background: #1b1e25; color: #dfe5f0; border: 1px solid #343946; border-radius: 8px; padding: 10px; font-size: 14px;")
+        reverso.setStyleSheet(detail_button_style)
         reverso.clicked.connect(self.open_current_reverso)
+        deepl = QPushButton("Open DeepL ↗")
+        deepl.setStyleSheet(detail_button_style)
+        deepl.clicked.connect(self.open_current_deepl)
         details_buttons.addWidget(edit_word)
         details_buttons.addWidget(reverso)
+        details_buttons.addWidget(deepl)
         details_layout.addLayout(details_buttons)
         right_col.addWidget(details)
 
         right_col.addStretch(1)
 
-        body.addWidget(left_card, 2)
-        body.addLayout(right_col, 3)
+        body.addWidget(left_card, 0)
+        body.addLayout(right_col, 1)
         layout.addLayout(body, 1)
 
         self.current_word_id = None
@@ -2577,138 +2659,234 @@ class MainWindow(QMainWindow):
 
         files = [
             (
-                "File 1",
-                "Hello, names and countries",
+                "1",
+                "Verb be: singular forms",
                 [
-                    "Subject pronouns: I, you, he, she, it, we, they.",
-                    "Verb be in positive sentences: I am, you are, he/she/it is.",
-                    "Basic word order: subject + be + name/country.",
+                    (
+                        "1A",
+                        "I and you",
+                        ["Use I am and you are.", "Negative forms: I am not, you are not.", "Question order: Am I...? Are you...?"],
+                        ["I am Helen.", "You are Tom.", "Are you Mike?"],
+                    ),
+                    (
+                        "1B",
+                        "he, she, it",
+                        ["Use he is, she is, it is.", "Negative contractions: he isn't, she isn't, it isn't.", "Use he for a man, she for a woman, it for a thing."],
+                        ["He is from Italy.", "She isn't from Brazil.", "Is it good?"],
+                    ),
                 ],
-                ["I am Viktor.", "She is from Spain.", "They are students."],
             ),
             (
-                "File 2",
-                "Questions with be",
+                "2",
+                "Articles and plurals",
                 [
-                    "Question form: be + subject.",
-                    "Short answers: Yes, I am. No, she isn't.",
-                    "Question words: what, where, who, how.",
+                    (
+                        "2A",
+                        "a / an and classroom nouns",
+                        ["Use a before consonant sounds.", "Use an before vowel sounds.", "Use singular nouns with a/an."],
+                        ["a book", "an apple", "It is a pen."],
+                    ),
+                    (
+                        "2B",
+                        "Regular plural nouns",
+                        ["Most plurals add -s.", "Add -es after s, sh, ch, x.", "Use these/those for plural things."],
+                        ["two books", "three boxes", "These are chairs."],
+                    ),
                 ],
-                ["Are you from Russia?", "Where is Anna from?", "Who is he?"],
             ),
             (
-                "File 3",
-                "This, that and classroom language",
+                "3",
+                "This / that and possession",
                 [
-                    "This/that for one thing; these/those for more than one.",
-                    "a/an before singular nouns.",
-                    "Imperatives for instructions: listen, repeat, open, close.",
+                    (
+                        "3A",
+                        "this, that, these, those",
+                        ["Use this/these for near things.", "Use that/those for far things.", "Match singular and plural forms."],
+                        ["This is my phone.", "Those are keys.", "Is that your bag?"],
+                    ),
+                    (
+                        "3B",
+                        "Possessive adjectives",
+                        ["Use my, your, his, her, its, our, their before nouns.", "Possessive adjectives do not change for singular/plural nouns.", "Use his for a man and her for a woman."],
+                        ["This is my sister.", "His car is old.", "Their books are here."],
+                    ),
                 ],
-                ["This is a book.", "That is an apple.", "Open your book."],
             ),
             (
-                "File 4",
-                "Possessives and family",
+                "4",
+                "People and family",
                 [
-                    "Possessive adjectives: my, your, his, her, its, our, their.",
-                    "Possessive 's for people: Anna's brother.",
-                    "Use have/has for family and basic possessions.",
+                    (
+                        "4A",
+                        "Possessive 's",
+                        ["Use 's after a person to show possession.", "For regular plural nouns, add only an apostrophe.", "Use it mostly with people and animals."],
+                        ["Anna's brother is here.", "My parents' house is small.", "Tom's phone is new."],
+                    ),
+                    (
+                        "4B",
+                        "have / has",
+                        ["Use have with I, you, we, they.", "Use has with he, she, it.", "Use don't/doesn't for negatives."],
+                        ["I have two sisters.", "She has a dog.", "They don't have a car."],
+                    ),
                 ],
-                ["This is my sister.", "Tom's father is a doctor.", "She has two brothers."],
             ),
             (
-                "File 5",
-                "Plural nouns and there is / there are",
+                "5",
+                "There is / there are",
                 [
-                    "Regular plurals usually add -s or -es.",
-                    "Use there is for one thing and there are for plural things.",
-                    "Some common plurals are irregular: man/men, child/children.",
+                    (
+                        "5A",
+                        "there is / there are",
+                        ["Use there is for one thing.", "Use there are for more than one thing.", "Question order: Is there...? Are there...?"],
+                        ["There is a table.", "There are two windows.", "Is there a cafe near here?"],
+                    ),
+                    (
+                        "5B",
+                        "some / any",
+                        ["Use some in positive plural sentences.", "Use any in questions and negatives.", "Use any with plural countable nouns."],
+                        ["There are some books.", "Are there any shops?", "There aren't any chairs."],
+                    ),
                 ],
-                ["There is a chair.", "There are two windows.", "I have three children."],
             ),
             (
-                "File 6",
-                "Present Simple: I/you/we/they",
+                "6",
+                "Present Simple basics",
                 [
-                    "Use Present Simple for habits and facts.",
-                    "With I/you/we/they use the base verb.",
-                    "Negatives: don't + verb.",
+                    (
+                        "6A",
+                        "I / you / we / they",
+                        ["Use the base verb with I, you, we, they.", "Use don't for negatives.", "Use do for questions."],
+                        ["I work in a bank.", "We don't live here.", "Do you speak English?"],
+                    ),
+                    (
+                        "6B",
+                        "he / she / it",
+                        ["Add -s or -es with he, she, it.", "Use doesn't for negatives.", "Use does for questions."],
+                        ["He works at home.", "She doesn't drive.", "Does it cost much?"],
+                    ),
                 ],
-                ["I work in a bank.", "We live near the station.", "They don't speak German."],
             ),
             (
-                "File 7",
-                "Present Simple: he/she/it",
+                "7",
+                "Daily routines and frequency",
                 [
-                    "Add -s or -es with he/she/it.",
-                    "Negatives: doesn't + base verb.",
-                    "Questions: does + subject + base verb.",
+                    (
+                        "7A",
+                        "Adverbs of frequency",
+                        ["Use always, usually, often, sometimes, never.", "Put adverbs before most verbs.", "Put adverbs after be."],
+                        ["I often cook dinner.", "She is always late.", "We never watch TV."],
+                    ),
+                    (
+                        "7B",
+                        "Time expressions",
+                        ["Use in for parts of the day.", "Use at for clock times.", "Use on for days."],
+                        ["I study in the evening.", "He gets up at seven.", "We work on Monday."],
+                    ),
                 ],
-                ["He works at home.", "She doesn't drive.", "Does it cost much?"],
             ),
             (
-                "File 8",
-                "Adverbs of frequency and time",
+                "8",
+                "Can and object pronouns",
                 [
-                    "Common adverbs: always, usually, often, sometimes, never.",
-                    "Adverbs usually go before the main verb.",
-                    "With be, adverbs usually go after be.",
+                    (
+                        "8A",
+                        "can / can't",
+                        ["Use can for ability and possibility.", "Can is the same for all subjects.", "Use can + base verb."],
+                        ["I can swim.", "She can't drive.", "Can you help me?"],
+                    ),
+                    (
+                        "8B",
+                        "Object pronouns",
+                        ["Use me, you, him, her, it, us, them after verbs.", "Object pronouns replace object nouns.", "Use him for a man and her for a woman."],
+                        ["I know him.", "She helps us.", "Can you call them?"],
+                    ),
                 ],
-                ["I often cook dinner.", "She is always late.", "We never watch TV."],
             ),
             (
-                "File 9",
-                "Can / can't and object pronouns",
-                [
-                    "Use can for ability and possibility.",
-                    "Can is the same for all subjects.",
-                    "Object pronouns: me, you, him, her, it, us, them.",
-                ],
-                ["I can swim.", "Can you help me?", "I know him."],
-            ),
-            (
-                "File 10",
+                "9",
                 "Present Continuous",
                 [
-                    "Form: be + verb-ing.",
-                    "Use it for actions happening now.",
-                    "Negatives and questions use be.",
+                    (
+                        "9A",
+                        "Actions happening now",
+                        ["Form: be + verb-ing.", "Use it for actions happening now.", "Use am/is/are before the -ing form."],
+                        ["I am studying now.", "She is reading.", "They are waiting."],
+                    ),
+                    (
+                        "9B",
+                        "Questions and negatives",
+                        ["Move be before the subject in questions.", "Use not after be for negatives.", "Short answers use be."],
+                        ["Are you listening?", "He isn't sleeping.", "Yes, I am."],
+                    ),
                 ],
-                ["I am studying now.", "She isn't sleeping.", "Are they waiting?"],
             ),
             (
-                "File 11",
+                "10",
                 "Past Simple: be and regular verbs",
                 [
-                    "Past of be: was/were.",
-                    "Regular past verbs usually add -ed.",
-                    "Use did/didn't for questions and negatives with regular verbs.",
+                    (
+                        "10A",
+                        "was / were",
+                        ["Use was with I, he, she, it.", "Use were with you, we, they.", "Question order: Was/Were + subject."],
+                        ["I was at home.", "They were tired.", "Were you late?"],
+                    ),
+                    (
+                        "10B",
+                        "Regular past verbs",
+                        ["Regular past verbs usually add -ed.", "Use didn't + base verb for negatives.", "Use did + subject + base verb for questions."],
+                        ["We watched a film.", "She didn't call.", "Did you work yesterday?"],
+                    ),
                 ],
-                ["I was at home.", "We watched a film.", "Did you call him?"],
             ),
             (
-                "File 12",
-                "Past Simple irregular verbs and going to",
+                "11",
+                "Past Simple: irregular verbs",
                 [
-                    "Some past verbs are irregular: go/went, have/had, see/saw.",
-                    "Use going to for future plans.",
-                    "Future form: be + going to + verb.",
+                    (
+                        "11A",
+                        "Common irregular verbs",
+                        ["Irregular past forms do not use -ed.", "Learn them as pairs: go/went, have/had, see/saw.", "The past form is the same for all subjects."],
+                        ["I went to work.", "She had coffee.", "We saw a film."],
+                    ),
+                    (
+                        "11B",
+                        "Past questions",
+                        ["Use did for questions with most past verbs.", "After did, use the base verb.", "Use question words before did."],
+                        ["Did you go out?", "Where did she live?", "What did they buy?"],
+                    ),
                 ],
-                ["I went to work.", "She had coffee.", "We are going to travel."],
+            ),
+            (
+                "12",
+                "Future plans",
+                [
+                    (
+                        "12A",
+                        "going to",
+                        ["Use going to for future plans.", "Form: be + going to + base verb.", "Use not after be for negatives."],
+                        ["I am going to study.", "She isn't going to drive.", "We are going to travel."],
+                    ),
+                    (
+                        "12B",
+                        "Future questions",
+                        ["Move be before the subject.", "Use question words before be.", "Short answers use be."],
+                        ["Are you going to work?", "Where are they going to stay?", "Yes, I am."],
+                    ),
+                ],
             ),
         ]
 
-        for file_code, file_title, rules, examples in files:
+        for file_code, file_title, parts in files:
             card = QFrame()
             card.setObjectName("card")
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(20, 16, 20, 16)
-            card_layout.setSpacing(10)
+            card_layout.setSpacing(12)
 
             top = QHBoxLayout()
             badge = QLabel(file_code)
             badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            badge.setFixedSize(78, 34)
+            badge.setFixedSize(46, 34)
             badge.setStyleSheet("background: #263251; color: #83a0ff; border-radius: 17px; font-size: 14px; font-weight: 900;")
             heading = QLabel(file_title)
             heading.setStyleSheet("background: transparent; color: #f2f4f8; font-size: 18px; font-weight: 900;")
@@ -2716,33 +2894,40 @@ class MainWindow(QMainWindow):
             top.addWidget(heading, 1)
             card_layout.addLayout(top)
 
-            rules_text = QLabel("<br>".join(f"• {rule}" for rule in rules))
-            rules_text.setWordWrap(True)
-            rules_text.setStyleSheet("background: transparent; color: #cbd3df; font-size: 15px; line-height: 1.35;")
-            card_layout.addWidget(rules_text)
+            for part_code, part_title, rules, examples in parts:
+                part = QFrame()
+                part.setStyleSheet("background: #1b1e25; border: 1px solid #333846; border-radius: 10px;")
+                part_layout = QVBoxLayout(part)
+                part_layout.setContentsMargins(14, 12, 14, 12)
+                part_layout.setSpacing(8)
 
-            examples_text = QLabel("Examples: " + "  /  ".join(examples))
-            examples_text.setWordWrap(True)
-            examples_text.setStyleSheet(
-                "background: #1b1e25; color: #f2f4f8; border: 1px solid #333846; border-radius: 8px; "
-                "padding: 10px 12px; font-size: 14px;"
-            )
-            card_layout.addWidget(examples_text)
+                part_top = QHBoxLayout()
+                part_badge = QLabel(part_code)
+                part_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                part_badge.setFixedSize(46, 28)
+                part_badge.setStyleSheet("background: #6d8cff; color: #ffffff; border-radius: 14px; font-size: 13px; font-weight: 900;")
+                part_heading = QLabel(part_title)
+                part_heading.setStyleSheet("background: transparent; color: #f2f4f8; font-size: 16px; font-weight: 900;")
+                part_top.addWidget(part_badge)
+                part_top.addWidget(part_heading, 1)
+                part_layout.addLayout(part_top)
+
+                rules_text = QLabel("<br>".join(f"• {rule}" for rule in rules))
+                rules_text.setWordWrap(True)
+                rules_text.setStyleSheet("background: transparent; border: 0; color: #cbd3df; font-size: 14px; line-height: 1.35;")
+                part_layout.addWidget(rules_text)
+
+                examples_text = QLabel("Examples: " + "  /  ".join(examples))
+                examples_text.setWordWrap(True)
+                examples_text.setStyleSheet(
+                    "background: #15181e; color: #f2f4f8; border: 1px solid #2e3340; border-radius: 8px; "
+                    "padding: 9px 11px; font-size: 13px;"
+                )
+                part_layout.addWidget(examples_text)
+                card_layout.addWidget(part)
+
             content_layout.addWidget(card)
 
-        coming = QFrame()
-        coming.setObjectName("card")
-        coming_layout = QVBoxLayout(coming)
-        coming_layout.setContentsMargins(20, 16, 20, 16)
-        coming_layout.setSpacing(8)
-        coming_title = QLabel("Next levels")
-        coming_title.setStyleSheet("background: transparent; color: #f2f4f8; font-size: 18px; font-weight: 900;")
-        coming_text = QLabel("A1, A2, B1, B2 and C1 are prepared in the level bar and can be filled later.")
-        coming_text.setWordWrap(True)
-        coming_text.setStyleSheet("background: transparent; color: #9fa8ba; font-size: 15px;")
-        coming_layout.addWidget(coming_title)
-        coming_layout.addWidget(coming_text)
-        content_layout.addWidget(coming)
         content_layout.addStretch(1)
 
         scroll.setWidget(content)
@@ -2862,12 +3047,10 @@ class MainWindow(QMainWindow):
         if not row:
             return
         self.current_word_id = word_id
+        self.current_word_row = row
         self.attempts_left = 3
-        prompt, correct = self.prompt_for_word(row)
-        self.current_correct_answer = correct.strip().lower()
+        self.current_correct_answer = str(row["word"] or "").strip().lower()
         self.current_english_word = str(row["word"] or "")
-        transcription = f" · {row['transcription']}" if self.setting_value("show_transcription", True) and row["transcription"] else ""
-        self.quiz_label.setText(f"{prompt}  ·  {row['category']}  ·  {row['level']}{transcription}")
         clean_transcription = str(row["transcription"] or "") if self.setting_value("show_transcription", True) else ""
         status_title = "New" if row["status"] == "new" else "Review"
         if hasattr(self, "study_category_label"):
@@ -2876,26 +3059,84 @@ class MainWindow(QMainWindow):
             self.word_status_value.setText(status_title)
         if hasattr(self, "word_next_review_value"):
             self.word_next_review_value.setText("Today")
-        self.quiz_label.setText(str(row["word"] or prompt))
+        self.quiz_label.setText(str(row["word"] or ""))
         if hasattr(self, "transcription_label"):
             self.transcription_label.setText(clean_transcription)
-        if hasattr(self, "translation_label"):
-            self.translation_label.setText(str(row["translation"] or correct))
         self.attempts_label.setText("Attempts left: 3")
         if hasattr(self, "word_attempts_value"):
             self.word_attempts_value.setText("3")
-        self.update_mnemonic_preview(row["mnemonic_image"] or "")
-        self.update_examples(row["example_en"] or "", row["example_ru"] or "")
         self.answer.clear()
         self.result_label.setText("")
-        self.answer.setFocus()
+        if self.study_mode == "learn" and row["status"] == "new":
+            self.set_learning_preview_state()
+        else:
+            self.begin_typing_current_word()
         self.pronounce_english(self.current_english_word)
+
+    def set_learning_preview_state(self) -> None:
+        self.learning_phase = "preview"
+        row = getattr(self, "current_word_row", None)
+        if not row:
+            return
+        self.set_study_navigation_enabled(True)
+        self.quiz_label.setText(str(row["word"] or ""))
+        self.answer.setEnabled(False)
+        self.answer.clear()
+        self.answer.setPlaceholderText("Press Start learning first")
+        if hasattr(self, "check_button"):
+            self.check_button.setText("Start learning\nthis word")
+        self.hide_current_word_details()
+
+    def begin_typing_current_word(self) -> None:
+        self.learning_phase = "typing"
+        row = getattr(self, "current_word_row", None)
+        if not row:
+            return
+        self.set_study_navigation_enabled(False)
+        self.hide_current_word_details()
+        self.quiz_label.setText("Type the English word")
+        if hasattr(self, "transcription_label"):
+            self.transcription_label.setText(str(row["transcription"] or "") if self.setting_value("show_transcription", True) else "")
+        if hasattr(self, "translation_label"):
+            self.translation_label.setText(str(row["translation"] or ""))
+        self.answer.setEnabled(True)
+        self.answer.setPlaceholderText("Type English word")
+        self.answer.clear()
+        if hasattr(self, "check_button"):
+            self.check_button.setText("Check answer")
+        self.answer.setFocus()
+
+    def set_study_navigation_enabled(self, enabled: bool) -> None:
+        for button_name in ("known_btn", "prev_btn", "next_btn"):
+            if hasattr(self, button_name):
+                getattr(self, button_name).setEnabled(enabled)
+
+    def hide_current_word_details(self) -> None:
+        if hasattr(self, "translation_label"):
+            self.translation_label.setText("Hidden. Click the eye icon to reveal.")
+        if hasattr(self, "mnemonic_preview"):
+            self.mnemonic_preview.setPixmap(QPixmap())
+            self.mnemonic_preview.setText("Hidden. Click the eye icon to reveal.")
+        if hasattr(self, "example_label"):
+            self.example_label.setText("Hidden. Click the eye icon to reveal.")
+
+    def reveal_current_word_details(self) -> None:
+        row = getattr(self, "current_word_row", None)
+        if not row:
+            return
+        if hasattr(self, "translation_label"):
+            self.translation_label.setText(str(row["translation"] or ""))
+        self.update_mnemonic_preview(row["mnemonic_image"] or "")
+        self.update_examples(row["example_en"] or "", row["example_ru"] or "")
 
     def update_mnemonic_preview(self, image_path: str) -> None:
         if image_path and Path(image_path).exists():
             pixmap = QPixmap(image_path)
+            target_size = self.mnemonic_preview.size()
+            if target_size.width() < 120 or target_size.height() < 120:
+                target_size = QSize(640, 240)
             self.mnemonic_preview.setPixmap(
-                pixmap.scaled(460, 108, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                pixmap.scaled(target_size, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
             )
             self.mnemonic_preview.setText("")
             return
@@ -2919,10 +3160,51 @@ class MainWindow(QMainWindow):
         self.update_study_queue_labels()
         self.pick_random_word()
 
+    def start_learning_or_check(self) -> None:
+        if not self.current_word_id:
+            self.pick_random_word()
+            return
+        if getattr(self, "learning_phase", "preview") == "preview":
+            self.begin_typing_current_word()
+            return
+        self.check_answer()
+
+    def show_goal_complete_banner(self) -> None:
+        goal = self.daily_goal_value()
+        if not hasattr(self, "goal_banner"):
+            QMessageBox.information(self, "Nice Job!", f"Nice Job! Today you learned {goal} new words.")
+            return
+        self.goal_banner.setText(f"Nice Job! Today you learned {goal} new words.")
+        self.goal_banner.show()
+        QTimer.singleShot(4500, self.goal_banner.hide)
+
     def check_answer(self) -> None:
         if not self.current_word_id:
             return
+        if getattr(self, "learning_phase", "typing") == "preview":
+            self.begin_typing_current_word()
+            return
         raw_answer = self.answer.text().strip()
+        row = getattr(self, "current_word_row", None)
+        is_new_learning = bool(row and self.study_mode == "learn" and row["status"] == "new")
+        if not raw_answer:
+            self.result_label.setText("Type an answer first.")
+            self.answer.setFocus()
+            return
+        if is_new_learning and raw_answer.lower() != getattr(self, "current_correct_answer", ""):
+            self.attempts_left = max(0, int(getattr(self, "attempts_left", 3)) - 1)
+            if self.attempts_left <= 0:
+                self.result_label.setText(f"Answer: {getattr(self, 'current_correct_answer', '')}. Try again until correct.")
+                self.reveal_current_word_details()
+                self.attempts_left = 3
+            else:
+                self.result_label.setText(f"Try again. Attempts left: {self.attempts_left}")
+            self.attempts_label.setText(f"Attempts left: {self.attempts_left}")
+            if hasattr(self, "word_attempts_value"):
+                self.word_attempts_value.setText(str(self.attempts_left))
+            self.answer.selectAll()
+            self.answer.setFocus()
+            return
         result = services.check_answer(
             int(self.current_word_id),
             raw_answer,
@@ -2933,24 +3215,24 @@ class MainWindow(QMainWindow):
         self.attempts_label.setText(f"Attempts left: {self.attempts_left}")
         if hasattr(self, "word_attempts_value"):
             self.word_attempts_value.setText(str(self.attempts_left))
-        if not raw_answer:
-            self.result_label.setText(result.message)
-            self.answer.setFocus()
-            return
         message = result.message
         if not result.is_correct and self.attempts_left > 0:
             self.result_label.setText(message)
             self.answer.selectAll()
             self.answer.setFocus()
             return
-        show_pictures = self.setting_value("show_pictures", "When translation is shown")
-        if show_pictures == "Always" or (show_pictures == "When translation is shown" and not result.is_correct):
-            message += "  -  Picture area enabled"
         self.result_label.setText(message)
         self.model.select()
         self.refresh_statistics()
         self.update_daily_goal_progress()
         self.update_study_queue_labels()
+        if result.is_correct:
+            learned = self.learned_new_words_today()
+            goal = self.daily_goal_value()
+            if result.daily_goal_incremented and learned >= goal:
+                self.show_goal_complete_banner()
+                return
+            QTimer.singleShot(450, self.pick_random_word)
         return
 
     def restore_backup(self) -> None:

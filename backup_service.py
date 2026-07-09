@@ -3,8 +3,11 @@ import sqlite3
 import time
 from pathlib import Path
 
-from db import APP_DB, connect_sqlite
+from db import APP_DB, DATA_DIR, connect_sqlite
 from services import good_series_from_status, reword_learned_series, status_from_good_series
+
+
+MNEMONIC_DIR = DATA_DIR / "mnemonic_images"
 
 
 def slugify_category(value: str) -> str:
@@ -12,6 +15,40 @@ def slugify_category(value: str) -> str:
     while "__" in slug:
         slug = slug.replace("__", "_")
     return slug or "custom"
+
+
+def image_extension_from_bytes(data: bytes) -> str:
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):
+        return ".gif"
+    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return ".webp"
+    return ".img"
+
+
+def save_picture_blob(word_id: int, picture_id: int, content: bytes) -> str:
+    MNEMONIC_DIR.mkdir(parents=True, exist_ok=True)
+    suffix = image_extension_from_bytes(content)
+    image_path = MNEMONIC_DIR / f"word_{word_id}_picture_{picture_id}{suffix}"
+    image_path.write_bytes(content)
+    return str(image_path)
+
+
+def existing_image_path(value: str) -> Path | None:
+    if not value:
+        return None
+    image_path = Path(value)
+    candidates = [image_path]
+    if not image_path.is_absolute():
+        candidates.append(DATA_DIR / image_path)
+        candidates.append(DATA_DIR.parent / image_path)
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return None
 
 
 def import_reword_backup(path: Path) -> None:
@@ -31,15 +68,23 @@ def import_reword_backup(path: Path) -> None:
         for row in source.execute("SELECT WORD_ID, CATEGORY_ID FROM WORD_CATEGORY"):
             word_categories.setdefault(row["WORD_ID"], category_map.get(row["CATEGORY_ID"], row["CATEGORY_ID"]))
 
+    word_columns = {row["name"] for row in source.execute("PRAGMA table_info(WORD)")}
+    picture_column = "PICTURE_ID" if "PICTURE_ID" in word_columns else "NULL AS PICTURE_ID"
+
     word_stats = {}
     if "WordStat" in tables:
         for row in source.execute("SELECT KeyWord, LastRepeatTime, TotalAnswerNumbers, GoodSeries FROM WordStat"):
             word_stats[row["KeyWord"]] = row
 
+    pictures = {}
+    if "PICTURE" in tables:
+        for row in source.execute("SELECT ID, CONTENT FROM PICTURE WHERE CONTENT IS NOT NULL"):
+            pictures[int(row["ID"])] = bytes(row["CONTENT"])
+
     target = connect_sqlite(APP_DB)
     target.execute("DELETE FROM words")
     rows_to_insert = []
-    for row in source.execute("SELECT ID, WORD, RUS, EXT_SOURCE_ID, Q_REP, S_REP, F_REC FROM WORD ORDER BY ID"):
+    for row in source.execute(f"SELECT ID, WORD, {picture_column}, RUS, EXT_SOURCE_ID, Q_REP, S_REP, F_REC FROM WORD ORDER BY ID"):
         english = row["WORD"]
         if not english:
             continue
@@ -54,6 +99,10 @@ def import_reword_backup(path: Path) -> None:
             total_answers = 1 if good_series else 0
             last_repeat_time = 0
             status = "known" if row["F_REC"] else "mastered" if row["S_REP"] else "review" if row["Q_REP"] else "new"
+        picture_id = int(row["PICTURE_ID"] or 0)
+        mnemonic_image = ""
+        if picture_id and picture_id in pictures:
+            mnemonic_image = save_picture_blob(int(row["ID"] or 0), picture_id, pictures[picture_id])
         rows_to_insert.append(
             (
                 english,
@@ -65,6 +114,7 @@ def import_reword_backup(path: Path) -> None:
                 total_answers,
                 good_series,
                 last_repeat_time,
+                mnemonic_image,
             )
         )
 
@@ -72,8 +122,8 @@ def import_reword_backup(path: Path) -> None:
         """
         INSERT INTO words(
             word, translation, level, category, status, reword_id,
-            total_answers, good_series, last_repeat_time
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            total_answers, good_series, last_repeat_time, mnemonic_image
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rows_to_insert,
     )
@@ -197,14 +247,23 @@ def export_reword_backup(path: Path) -> None:
         q_rep = 1 if row["status"] == "review" else 0
         s_rep = 1 if row["status"] in {"mastered", "known"} else 0
         f_rec = 1 if row["status"] == "known" else 0
+        picture_id = None
+        image_path = existing_image_path(row["mnemonic_image"] or "")
+        if image_path:
+            picture_content = image_path.read_bytes()
+            backup.execute(
+                "INSERT INTO PICTURE(SOURCE, SOURCE_ID, CONTENT, IS_CUSTOM) VALUES (?, ?, ?, 1)",
+                ("MemWord", image_path.name, sqlite3.Binary(picture_content)),
+            )
+            picture_id = int(backup.execute("SELECT last_insert_rowid()").fetchone()[0])
         backup.execute(
             """
             INSERT INTO WORD(
                 WORD, REG, PICTURE_ID, RUS, POS, EXT_SOURCE, EXT_SOURCE_ID,
                 Q_REC, Q_REP, S_REC, S_REP, E_REC, E_REP, F_REC, F_REP
-            ) VALUES (?, NULL, NULL, ?, 1, 'EnglishLearningDesktop-PyQt6', ?, ?, ?, ?, ?, 2.5, 2.5, ?, 0)
+            ) VALUES (?, NULL, ?, ?, 1, 'EnglishLearningDesktop-PyQt6', ?, ?, ?, ?, ?, 2.5, 2.5, ?, 0)
             """,
-            (row["word"], row["translation"], row["level"], 1 if q_rep or s_rep else 0, q_rep, s_rep, s_rep, f_rec),
+            (row["word"], picture_id, row["translation"], row["level"], 1 if q_rep or s_rep else 0, q_rep, s_rep, s_rep, f_rec),
         )
         word_id = backup.execute("SELECT last_insert_rowid()").fetchone()[0]
         backup.execute("INSERT INTO WORD_CATEGORY(WORD_ID, CATEGORY_ID) VALUES (?, ?)", (word_id, category_ids[row["category"]]))
