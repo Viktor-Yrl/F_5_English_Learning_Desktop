@@ -12,8 +12,8 @@ import db as database
 import services
 import settings_service
 import translation_service
-from PyQt6.QtCore import QRectF, QSize, QUrl, Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QColor, QDesktopServices, QPainter, QPalette, QPen, QPixmap
+from PyQt6.QtCore import QPointF, QRectF, QSize, QUrl, Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QColor, QDesktopServices, QPainter, QPalette, QPen, QPixmap, QPolygonF
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtSql import QSqlDatabase, QSqlTableModel
 from PyQt6.QtWidgets import (
@@ -90,11 +90,11 @@ DARK_COLORS = {
 TRANSLATIONS = {
     "English": {
         "window_title": "MemWord - English Learning Desktop",
-        "sidebar": ["MemWord", "Category choice", "Study", "Statistics", "Dictionary", "Settings"],
+        "sidebar": ["MemWord", "Search", "Category choice", "Study", "English rules", "Statistics", "Dictionary", "Settings", "About"],
     },
     "Русский": {
         "window_title": "MemWord - изучение английского",
-        "sidebar": ["MemWord", "Category choice", "Study", "Statistics", "Dictionary", "Settings"],
+        "sidebar": ["MemWord", "Search", "Category choice", "Study", "English rules", "Statistics", "Dictionary", "Settings", "About"],
     },
 }
 
@@ -702,6 +702,30 @@ class StatsChartWidget(QWidget):
         return max(2, int(min_label_width / max(1, slot_width)) + 1)
 
 
+class PlayButton(QPushButton):
+    def __init__(self):
+        super().__init__("")
+        self.setFixedSize(42, 42)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet("background: transparent; border: 0;")
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pressed = self.isDown()
+        painter.setPen(QPen(QColor("#4d5f94"), 1.2))
+        painter.setBrush(QColor("#6d8cff" if pressed else "#222631"))
+        painter.drawRoundedRect(QRectF(1, 1, self.width() - 2, self.height() - 2), 10, 10)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#ffffff" if pressed else "#6d8cff"))
+        triangle = QPolygonF([
+            QPointF(17, 13),
+            QPointF(17, 29),
+            QPointF(29, 21),
+        ])
+        painter.drawPolygon(triangle)
+
+
 class SidebarIcon(QWidget):
     def __init__(self, kind: str):
         super().__init__()
@@ -745,6 +769,9 @@ class SidebarIcon(QWidget):
             painter.drawLine(38, 21, 38, 34)
             painter.drawLine(38, 34, 8, 34)
             painter.drawLine(8, 34, 8, 17)
+        elif self.kind == "search":
+            painter.drawEllipse(QRectF(11, 11, 18, 18))
+            painter.drawLine(27, 27, 37, 37)
         elif self.kind == "study":
             painter.drawLine(8, 20, 23, 13)
             painter.drawLine(23, 13, 38, 20)
@@ -758,6 +785,11 @@ class SidebarIcon(QWidget):
             painter.drawRoundedRect(QRectF(10, 27, 5, 9), 2, 2)
             painter.drawRoundedRect(QRectF(20, 20, 5, 16), 2, 2)
             painter.drawRoundedRect(QRectF(30, 12, 5, 24), 2, 2)
+        elif self.kind == "rules":
+            painter.drawRoundedRect(QRectF(12, 9, 24, 30), 3, 3)
+            painter.drawLine(17, 18, 31, 18)
+            painter.drawLine(17, 25, 31, 25)
+            painter.drawLine(17, 32, 27, 32)
         elif self.kind == "book":
             painter.drawLine(23, 16, 23, 35)
             painter.drawLine(23, 18, 14, 15)
@@ -770,6 +802,10 @@ class SidebarIcon(QWidget):
             painter.drawLine(37, 17, 37, 33)
             painter.drawLine(37, 33, 32, 31)
             painter.drawLine(32, 31, 23, 35)
+        elif self.kind == "info":
+            painter.drawEllipse(QRectF(12, 10, 22, 22))
+            painter.drawLine(23, 20, 23, 28)
+            painter.drawPoint(23, 15)
         elif self.kind == "settings":
             painter.drawEllipse(QRectF(18, 18, 10, 10))
             painter.drawEllipse(QRectF(12, 12, 22, 22))
@@ -836,6 +872,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.pages, 1)
         self.sidebar.currentRowChanged.connect(self.switch_page)
         self.sidebar.currentRowChanged.connect(lambda _: self.refresh_sidebar_styles())
+        self.sidebar.itemClicked.connect(lambda item: self.switch_page(self.sidebar.row(item)))
+        self.sidebar.itemClicked.connect(lambda _: self.refresh_sidebar_styles())
 
         self.pages.addWidget(self.build_dashboard_page())
         self.pages.addWidget(self.build_learn_page())
@@ -843,7 +881,9 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(self.build_dictionary_page())
         self.pages.addWidget(self.build_settings_page())
         self.pages.addWidget(self.build_statistics_page())
-        self.sidebar.setCurrentRow(0)
+        self.pages.addWidget(self.build_about_page())
+        self.pages.addWidget(self.build_english_rules_page())
+        self.sidebar.setCurrentRow(1)
         self.apply_style()
         self.apply_language(self.setting_value("ui_language", "Match system language"))
 
@@ -874,7 +914,7 @@ class MainWindow(QMainWindow):
         return row
 
     def sidebar_icon(self, index: int) -> str:
-        icons = ["logo", "folder", "study", "stats", "book", "settings"]
+        icons = ["logo", "search", "folder", "study", "rules", "stats", "book", "settings", "info"]
         return icons[index] if index < len(icons) else "•"
 
     def refresh_sidebar_styles(self) -> None:
@@ -889,11 +929,12 @@ class MainWindow(QMainWindow):
             if isinstance(icon, SidebarIcon):
                 icon.set_selected(selected)
             if index == 0:
+                row_bg = "transparent"
+                row.setStyleSheet("QWidget#sidebarRow { background: transparent; border-radius: 12px; }")
                 label.setText("<span style='color:#f2f4f8;'>Mem</span><span style='color:#6d8cff;'>Word</span>")
                 label.setStyleSheet("background: transparent; border: 0; font-size: 22px; font-weight: 800;")
             else:
                 label.setStyleSheet(f"background: transparent; border: 0; color: {text_color}; font-size: 18px; font-weight: 600;")
-
     def apply_style(self) -> None:
         self.setStyleSheet(
             f"""
@@ -905,7 +946,7 @@ class MainWindow(QMainWindow):
             }}
             QWidget#sidebarPanel {{
                 background: {COLORS['sidebar']};
-                border-right: 1px solid {COLORS['line']};
+                border-right: 0;
             }}
             QListWidget#sidebar {{
                 background: {COLORS['sidebar']};
@@ -1142,26 +1183,40 @@ class MainWindow(QMainWindow):
         return label
 
     def switch_page(self, row: int) -> None:
+        if row == 0:
+            self.sidebar.setCurrentRow(1)
+            return
         if row == 1:
+            self.pages.setCurrentIndex(0)
+            return
+        if row == 2:
             self.refresh_category_list()
             self.pages.setCurrentIndex(2)
             return
-        if row == 4:
-            self.refresh_dictionary_list()
-            self.pages.setCurrentIndex(3)
-            return
-        if row == 2:
+        if row == 3:
+            was_study_page = self.pages.currentIndex() == 1
             self.pages.setCurrentIndex(1)
             self.study_mode = "learn"
             self.refresh_study_tabs()
-            self.pick_random_word()
+            if not was_study_page or not getattr(self, "current_word_id", None):
+                self.pick_random_word()
             return
-        if row == 3:
+        if row == 4:
+            self.pages.setCurrentIndex(7)
+            return
+        if row == 5:
             self.refresh_statistics()
             self.pages.setCurrentIndex(5)
             return
-        if row == 5:
+        if row == 6:
+            self.refresh_dictionary_list()
+            self.pages.setCurrentIndex(3)
+            return
+        if row == 7:
             self.pages.setCurrentIndex(4)
+            return
+        if row == 8:
+            self.pages.setCurrentIndex(6)
             return
         self.pages.setCurrentIndex(0)
 
@@ -1477,6 +1532,8 @@ class MainWindow(QMainWindow):
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search words...")
         self.search.textChanged.connect(self.apply_filter)
+        all_categories_btn = QPushButton("All categories")
+        all_categories_btn.clicked.connect(self.clear_category_filter)
         add_word_btn = QPushButton("Add word")
         add_word_btn.clicked.connect(self.add_word)
         import_btn = QPushButton("Import backup")
@@ -1484,6 +1541,7 @@ class MainWindow(QMainWindow):
         import_btn.clicked.connect(self.restore_backup)
         export_btn.clicked.connect(self.create_backup)
         top.addWidget(self.search, 1)
+        top.addWidget(all_categories_btn)
         top.addWidget(add_word_btn)
         top.addWidget(import_btn)
         top.addWidget(export_btn)
@@ -1984,7 +2042,7 @@ class MainWindow(QMainWindow):
         if row:
             self.load_quiz_word(int(row["id"]))
             self.pages.setCurrentIndex(1)
-            self.sidebar.setCurrentRow(2)
+            self.sidebar.setCurrentRow(3)
 
     def chosen_review_categories(self) -> list[str]:
         return self.chosen_categories()
@@ -2077,12 +2135,12 @@ class MainWindow(QMainWindow):
     def update_study_queue_labels(self) -> None:
         if not hasattr(self, "study_queue_new_label"):
             return
-        values = services.dashboard_stats()
+        values = services.dashboard_stats(self.chosen_review_categories())
         self.study_queue_new_label.setText(str(values.get("new", 0)))
-        self.study_queue_review_label.setText(str(values.get("review", 0)))
+        self.study_queue_review_label.setText(str(values.get("due_today", 0)))
         self.study_queue_hard_label.setText(str(values.get("hard", 0)))
         if hasattr(self, "review_badge"):
-            self.review_badge.setText(f"{values.get('review', 0)} due")
+            self.review_badge.setText(f"{values.get('due_today', 0)} due")
 
     def open_current_reverso(self) -> None:
         word = getattr(self, "current_english_word", "").strip()
@@ -2175,9 +2233,7 @@ class MainWindow(QMainWindow):
         word_texts.addWidget(self.quiz_label)
         word_texts.addWidget(self.transcription_label)
         word_row.addLayout(word_texts, 1)
-        play_word = QPushButton("▶")
-        play_word.setFixedSize(34, 34)
-        play_word.setStyleSheet("background: #222631; border: 1px solid #404756; border-radius: 9px; color: #cbd4e3; font-size: 15px;")
+        play_word = PlayButton()
         play_word.clicked.connect(lambda: self.pronounce_english(getattr(self, "current_english_word", "")))
         word_row.addWidget(play_word, 0, Qt.AlignmentFlag.AlignTop)
         left.addLayout(word_row)
@@ -2196,14 +2252,6 @@ class MainWindow(QMainWindow):
         self.translation_label.setStyleSheet("background: #1b1e25; border: 1px solid #343946; border-radius: 8px; color: #f5f6f8; padding: 12px; font-size: 21px;")
         left.addWidget(self.translation_label)
 
-        example_caption = QLabel("Example sentence")
-        example_caption.setStyleSheet("background: transparent; color: #9da5b4; font-size: 13px;")
-        left.addWidget(example_caption)
-        self.example_label = QLabel("No example sentence yet. Use Edit word to add one.")
-        self.example_label.setWordWrap(True)
-        self.example_label.setStyleSheet("background: transparent; color: #cdd3df; font-size: 14px;")
-        left.addWidget(self.example_label)
-
         input_caption = QLabel("Type translation")
         input_caption.setStyleSheet("background: transparent; color: #9da5b4; font-size: 13px;")
         left.addWidget(input_caption)
@@ -2215,23 +2263,133 @@ class MainWindow(QMainWindow):
 
         bottom = QHBoxLayout()
         bottom.setSpacing(14)
-        known_btn = QPushButton("I already know")
-        known_btn.setStyleSheet("background: #1b1e25; color: #f5f6f8; border: 1px solid #343946; border-radius: 8px; padding: 12px 18px; font-size: 15px; font-weight: 800;")
+        secondary_action_style = """
+            QPushButton {
+                background: #1b1e25;
+                color: #f5f6f8;
+                border: 1px solid #343946;
+                border-radius: 8px;
+                padding: 10px 18px;
+                font-size: 15px;
+                font-weight: 800;
+            }
+            QPushButton:hover {
+                border-color: #6d8cff;
+                color: #8fa6ff;
+            }
+            QPushButton:pressed {
+                background: #6d8cff;
+                color: #ffffff;
+                border-color: #6d8cff;
+            }
+        """
+        arrow_button_style = """
+            QPushButton {
+                background: #1b1e25;
+                color: #d8deea;
+                border: 1px solid #343946;
+                border-radius: 8px;
+                font-size: 26px;
+                font-weight: 900;
+            }
+            QPushButton:hover {
+                border-color: #6d8cff;
+                color: #8fa6ff;
+            }
+            QPushButton:pressed {
+                background: #6d8cff;
+                color: #ffffff;
+                border-color: #6d8cff;
+            }
+        """
+        primary_action_style = """
+            QPushButton {
+                background: #6d8cff;
+                color: #ffffff;
+                border: 0;
+                border-radius: 8px;
+                padding: 10px 22px;
+                font-size: 15px;
+                font-weight: 900;
+            }
+            QPushButton:hover {
+                background: #7897ff;
+            }
+            QPushButton:pressed {
+                background: #526fd1;
+            }
+        """
+        joined_known_style = """
+            QPushButton {
+                background: #1b1e25;
+                color: #f5f6f8;
+                border: 1px solid #343946;
+                border-right: 0;
+                border-top-left-radius: 8px;
+                border-bottom-left-radius: 8px;
+                border-top-right-radius: 0;
+                border-bottom-right-radius: 0;
+                padding: 10px 18px;
+                font-size: 15px;
+                font-weight: 800;
+            }
+            QPushButton:hover {
+                border-color: #6d8cff;
+                color: #8fa6ff;
+            }
+            QPushButton:pressed {
+                background: #6d8cff;
+                color: #ffffff;
+                border-color: #6d8cff;
+            }
+        """
+        joined_prev_style = """
+            QPushButton {
+                background: #1b1e25;
+                color: #d8deea;
+                border: 1px solid #343946;
+                border-top-left-radius: 0;
+                border-bottom-left-radius: 0;
+                border-top-right-radius: 8px;
+                border-bottom-right-radius: 8px;
+                font-size: 26px;
+                font-weight: 900;
+            }
+            QPushButton:hover {
+                border-color: #6d8cff;
+                color: #8fa6ff;
+            }
+            QPushButton:pressed {
+                background: #6d8cff;
+                color: #ffffff;
+                border-color: #6d8cff;
+            }
+        """
+        known_prev_group = QFrame()
+        known_prev_group.setStyleSheet("background: transparent; border: 0;")
+        known_prev_layout = QHBoxLayout(known_prev_group)
+        known_prev_layout.setContentsMargins(0, 0, 0, 0)
+        known_prev_layout.setSpacing(0)
+        known_btn = QPushButton("I already know\nthis word")
+        known_btn.setMinimumSize(176, 56)
+        known_btn.setStyleSheet(joined_known_style)
         known_btn.clicked.connect(self.mark_current_known)
         prev_btn = QPushButton("‹")
-        prev_btn.setFixedSize(48, 44)
-        prev_btn.setStyleSheet("background: #1b1e25; color: #d8deea; border: 1px solid #343946; border-radius: 8px; font-size: 26px;")
+        prev_btn.setFixedSize(58, 56)
+        prev_btn.setStyleSheet(joined_prev_style)
         prev_btn.clicked.connect(self.pick_random_word)
+        known_prev_layout.addWidget(known_btn)
+        known_prev_layout.addWidget(prev_btn)
         next_btn = QPushButton("›")
-        next_btn.setFixedSize(48, 44)
-        next_btn.setStyleSheet("background: #1b1e25; color: #d8deea; border: 1px solid #343946; border-radius: 8px; font-size: 26px;")
+        next_btn.setFixedSize(58, 56)
+        next_btn.setStyleSheet(arrow_button_style)
         next_btn.clicked.connect(self.pick_random_word)
-        check = QPushButton("Check answer")
-        check.setStyleSheet("background: #6d8cff; color: #ffffff; border: 0; border-radius: 8px; padding: 12px 22px; font-size: 15px; font-weight: 900;")
+        check = QPushButton("Start learning\nthis word")
+        check.setMinimumSize(182, 56)
+        check.setStyleSheet(primary_action_style)
         check.clicked.connect(self.check_answer)
-        bottom.addWidget(known_btn)
+        bottom.addWidget(known_prev_group)
         bottom.addStretch(1)
-        bottom.addWidget(prev_btn)
         bottom.addWidget(next_btn)
         bottom.addStretch(1)
         bottom.addWidget(check)
@@ -2270,12 +2428,19 @@ class MainWindow(QMainWindow):
         self.mnemonic_preview.setMinimumHeight(116)
         self.mnemonic_preview.setStyleSheet("background: #1b1e25; border: 1px dashed #3d4350; border-radius: 8px; color: #9da5b4; font-size: 14px;")
         details_layout.addWidget(self.mnemonic_preview)
-        attempts_row, self.word_attempts_value = self.study_info_row("Attempts left", "3")
-        status_row, self.word_status_value = self.study_info_row("Status", "New")
-        next_review_row, self.word_next_review_value = self.study_info_row("Next review", "Today")
-        details_layout.addWidget(attempts_row)
-        details_layout.addWidget(status_row)
-        details_layout.addWidget(next_review_row)
+
+        example_caption = QLabel("Example sentence")
+        example_caption.setStyleSheet("background: transparent; color: #9da5b4; font-size: 13px;")
+        details_layout.addWidget(example_caption)
+        self.example_label = QLabel("No example sentence yet. Use Edit word to add one.")
+        self.example_label.setWordWrap(True)
+        self.example_label.setMinimumHeight(58)
+        self.example_label.setStyleSheet(
+            "background: #1b1e25; color: #cdd3df; border: 1px solid #343946; "
+            "border-radius: 8px; padding: 10px 12px; font-size: 14px;"
+        )
+        details_layout.addWidget(self.example_label)
+
         details_buttons = QHBoxLayout()
         edit_word = QPushButton("Edit word")
         edit_word.setStyleSheet("background: #1b1e25; color: #dfe5f0; border: 1px solid #343946; border-radius: 8px; padding: 10px; font-size: 14px;")
@@ -2288,27 +2453,10 @@ class MainWindow(QMainWindow):
         details_layout.addLayout(details_buttons)
         right_col.addWidget(details)
 
-        queue = QFrame()
-        queue.setObjectName("studyQueue")
-        queue.setStyleSheet("QFrame#studyQueue { background: #20232b; border: 1px solid #333846; border-radius: 12px; }")
-        queue_layout = QVBoxLayout(queue)
-        queue_layout.setContentsMargins(18, 16, 18, 16)
-        queue_layout.setSpacing(10)
-        queue_title = QLabel("Session queue")
-        queue_title.setStyleSheet("background: transparent; color: #f5f6f8; font-size: 16px; font-weight: 900;")
-        queue_layout.addWidget(queue_title)
-        values = services.dashboard_stats()
-        row_new, self.study_queue_new_label = self.study_queue_item("#6d8cff", "New", "New words to learn", values.get("new", 0))
-        row_review, self.study_queue_review_label = self.study_queue_item("#ffd66b", "Review", "Words to review", values.get("review", 0))
-        row_hard, self.study_queue_hard_label = self.study_queue_item("#ef5da8", "Hard", "Difficult words", values.get("hard", 0))
-        queue_layout.addWidget(row_new)
-        queue_layout.addWidget(row_review)
-        queue_layout.addWidget(row_hard)
-        right_col.addWidget(queue)
         right_col.addStretch(1)
 
-        body.addWidget(left_card, 3)
-        body.addLayout(right_col, 2)
+        body.addWidget(left_card, 2)
+        body.addLayout(right_col, 3)
         layout.addLayout(body, 1)
 
         self.current_word_id = None
@@ -2316,6 +2464,289 @@ class MainWindow(QMainWindow):
         self.update_daily_goal_progress()
         self.refresh_study_tabs()
         self.update_study_queue_labels()
+        return page
+
+    def open_about_page(self) -> None:
+        self.sidebar.blockSignals(True)
+        self.sidebar.setCurrentRow(-1)
+        self.sidebar.clearSelection()
+        self.sidebar.blockSignals(False)
+        self.pages.setCurrentIndex(6)
+        self.refresh_sidebar_styles()
+
+    def build_about_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setSpacing(16)
+
+        title = QLabel("About MemWord")
+        title.setStyleSheet("background: transparent; color: #f2f4f8; font-size: 28px; font-weight: 900;")
+        layout.addWidget(title)
+
+        card = QFrame()
+        card.setObjectName("card")
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(22, 18, 22, 18)
+        card_layout.setSpacing(10)
+        description = QLabel(
+            "MemWord is a desktop app for learning English words with categories, spaced repetition, backups, statistics and mnemonic images."
+        )
+        description.setWordWrap(True)
+        description.setStyleSheet("background: transparent; color: #cbd3df; font-size: 16px;")
+        version = QLabel("Version 1.0.0")
+        version.setStyleSheet("background: transparent; color: #8f98aa; font-size: 14px;")
+        card_layout.addWidget(description)
+        card_layout.addWidget(version)
+        layout.addWidget(card)
+        layout.addStretch(1)
+        return page
+
+    def build_english_rules_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setSpacing(16)
+
+        header = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title_box.setSpacing(4)
+        title = QLabel("English rules")
+        title.setStyleSheet("background: transparent; color: #f2f4f8; font-size: 28px; font-weight: 900;")
+        subtitle = QLabel("Course-style grammar map by level. A0 Beginner is filled now.")
+        subtitle.setStyleSheet("background: transparent; color: #9fa8ba; font-size: 15px;")
+        title_box.addWidget(title)
+        title_box.addWidget(subtitle)
+        header.addLayout(title_box, 1)
+        layout.addLayout(header)
+
+        levels = QHBoxLayout()
+        levels.setSpacing(8)
+        level_items = [
+            ("A0", "Beginner", True),
+            ("A1", "Elementary", False),
+            ("A2", "Pre-Intermediate", False),
+            ("B1", "Intermediate", False),
+            ("B2", "Upper-Intermediate", False),
+            ("C1", "Advanced", False),
+        ]
+        for code, name, active in level_items:
+            level = QLabel(f"{code}\n{name}")
+            level.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            level.setMinimumHeight(56)
+            if active:
+                level.setStyleSheet(
+                    "background: #6d8cff; color: #ffffff; border-radius: 12px; "
+                    "padding: 8px 18px; font-size: 14px; font-weight: 900;"
+                )
+            else:
+                level.setStyleSheet(
+                    "background: #20232b; color: #cbd3df; border: 1px solid #333846; border-radius: 12px; "
+                    "padding: 8px 18px; font-size: 14px; font-weight: 800;"
+                )
+            levels.addWidget(level)
+        levels.addStretch(1)
+        layout.addLayout(levels)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: 0; }")
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(14)
+
+        intro = QFrame()
+        intro.setObjectName("card")
+        intro_layout = QVBoxLayout(intro)
+        intro_layout.setContentsMargins(22, 18, 22, 18)
+        intro_layout.setSpacing(8)
+        intro_title = QLabel("A0 Beginner")
+        intro_title.setStyleSheet("background: transparent; color: #f2f4f8; font-size: 22px; font-weight: 900;")
+        intro_text = QLabel(
+            "Beginner grammar is organized as short files, like a course book: each file gives one small grammar step, "
+            "simple examples and a clear pattern to remember."
+        )
+        intro_text.setWordWrap(True)
+        intro_text.setStyleSheet("background: transparent; color: #cbd3df; font-size: 15px;")
+        intro_layout.addWidget(intro_title)
+        intro_layout.addWidget(intro_text)
+        content_layout.addWidget(intro)
+
+        files = [
+            (
+                "File 1",
+                "Hello, names and countries",
+                [
+                    "Subject pronouns: I, you, he, she, it, we, they.",
+                    "Verb be in positive sentences: I am, you are, he/she/it is.",
+                    "Basic word order: subject + be + name/country.",
+                ],
+                ["I am Viktor.", "She is from Spain.", "They are students."],
+            ),
+            (
+                "File 2",
+                "Questions with be",
+                [
+                    "Question form: be + subject.",
+                    "Short answers: Yes, I am. No, she isn't.",
+                    "Question words: what, where, who, how.",
+                ],
+                ["Are you from Russia?", "Where is Anna from?", "Who is he?"],
+            ),
+            (
+                "File 3",
+                "This, that and classroom language",
+                [
+                    "This/that for one thing; these/those for more than one.",
+                    "a/an before singular nouns.",
+                    "Imperatives for instructions: listen, repeat, open, close.",
+                ],
+                ["This is a book.", "That is an apple.", "Open your book."],
+            ),
+            (
+                "File 4",
+                "Possessives and family",
+                [
+                    "Possessive adjectives: my, your, his, her, its, our, their.",
+                    "Possessive 's for people: Anna's brother.",
+                    "Use have/has for family and basic possessions.",
+                ],
+                ["This is my sister.", "Tom's father is a doctor.", "She has two brothers."],
+            ),
+            (
+                "File 5",
+                "Plural nouns and there is / there are",
+                [
+                    "Regular plurals usually add -s or -es.",
+                    "Use there is for one thing and there are for plural things.",
+                    "Some common plurals are irregular: man/men, child/children.",
+                ],
+                ["There is a chair.", "There are two windows.", "I have three children."],
+            ),
+            (
+                "File 6",
+                "Present Simple: I/you/we/they",
+                [
+                    "Use Present Simple for habits and facts.",
+                    "With I/you/we/they use the base verb.",
+                    "Negatives: don't + verb.",
+                ],
+                ["I work in a bank.", "We live near the station.", "They don't speak German."],
+            ),
+            (
+                "File 7",
+                "Present Simple: he/she/it",
+                [
+                    "Add -s or -es with he/she/it.",
+                    "Negatives: doesn't + base verb.",
+                    "Questions: does + subject + base verb.",
+                ],
+                ["He works at home.", "She doesn't drive.", "Does it cost much?"],
+            ),
+            (
+                "File 8",
+                "Adverbs of frequency and time",
+                [
+                    "Common adverbs: always, usually, often, sometimes, never.",
+                    "Adverbs usually go before the main verb.",
+                    "With be, adverbs usually go after be.",
+                ],
+                ["I often cook dinner.", "She is always late.", "We never watch TV."],
+            ),
+            (
+                "File 9",
+                "Can / can't and object pronouns",
+                [
+                    "Use can for ability and possibility.",
+                    "Can is the same for all subjects.",
+                    "Object pronouns: me, you, him, her, it, us, them.",
+                ],
+                ["I can swim.", "Can you help me?", "I know him."],
+            ),
+            (
+                "File 10",
+                "Present Continuous",
+                [
+                    "Form: be + verb-ing.",
+                    "Use it for actions happening now.",
+                    "Negatives and questions use be.",
+                ],
+                ["I am studying now.", "She isn't sleeping.", "Are they waiting?"],
+            ),
+            (
+                "File 11",
+                "Past Simple: be and regular verbs",
+                [
+                    "Past of be: was/were.",
+                    "Regular past verbs usually add -ed.",
+                    "Use did/didn't for questions and negatives with regular verbs.",
+                ],
+                ["I was at home.", "We watched a film.", "Did you call him?"],
+            ),
+            (
+                "File 12",
+                "Past Simple irregular verbs and going to",
+                [
+                    "Some past verbs are irregular: go/went, have/had, see/saw.",
+                    "Use going to for future plans.",
+                    "Future form: be + going to + verb.",
+                ],
+                ["I went to work.", "She had coffee.", "We are going to travel."],
+            ),
+        ]
+
+        for file_code, file_title, rules, examples in files:
+            card = QFrame()
+            card.setObjectName("card")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(20, 16, 20, 16)
+            card_layout.setSpacing(10)
+
+            top = QHBoxLayout()
+            badge = QLabel(file_code)
+            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            badge.setFixedSize(78, 34)
+            badge.setStyleSheet("background: #263251; color: #83a0ff; border-radius: 17px; font-size: 14px; font-weight: 900;")
+            heading = QLabel(file_title)
+            heading.setStyleSheet("background: transparent; color: #f2f4f8; font-size: 18px; font-weight: 900;")
+            top.addWidget(badge)
+            top.addWidget(heading, 1)
+            card_layout.addLayout(top)
+
+            rules_text = QLabel("<br>".join(f"• {rule}" for rule in rules))
+            rules_text.setWordWrap(True)
+            rules_text.setStyleSheet("background: transparent; color: #cbd3df; font-size: 15px; line-height: 1.35;")
+            card_layout.addWidget(rules_text)
+
+            examples_text = QLabel("Examples: " + "  /  ".join(examples))
+            examples_text.setWordWrap(True)
+            examples_text.setStyleSheet(
+                "background: #1b1e25; color: #f2f4f8; border: 1px solid #333846; border-radius: 8px; "
+                "padding: 10px 12px; font-size: 14px;"
+            )
+            card_layout.addWidget(examples_text)
+            content_layout.addWidget(card)
+
+        coming = QFrame()
+        coming.setObjectName("card")
+        coming_layout = QVBoxLayout(coming)
+        coming_layout.setContentsMargins(20, 16, 20, 16)
+        coming_layout.setSpacing(8)
+        coming_title = QLabel("Next levels")
+        coming_title.setStyleSheet("background: transparent; color: #f2f4f8; font-size: 18px; font-weight: 900;")
+        coming_text = QLabel("A1, A2, B1, B2 and C1 are prepared in the level bar and can be filled later.")
+        coming_text.setWordWrap(True)
+        coming_text.setStyleSheet("background: transparent; color: #9fa8ba; font-size: 15px;")
+        coming_layout.addWidget(coming_title)
+        coming_layout.addWidget(coming_text)
+        content_layout.addWidget(coming)
+        content_layout.addStretch(1)
+
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
         return page
 
     def build_vocabulary_page(self) -> QWidget:
@@ -2409,15 +2840,15 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Practice", "Select a word first.")
             return
         self.load_quiz_word(int(word_id))
-        self.sidebar.setCurrentRow(2)
+        self.sidebar.setCurrentRow(3)
 
     def pick_random_word(self) -> None:
         categories = self.chosen_review_categories()
         if not categories:
             QMessageBox.information(self, "Study", "Choose at least one category in Categories first.")
             self.refresh_category_list()
-            self.pages.setCurrentIndex(3)
-            self.sidebar.setCurrentRow(1)
+            self.pages.setCurrentIndex(2)
+            self.sidebar.setCurrentRow(2)
             return
         word_id = services.find_random_word_id(self.study_mode, categories)
         if word_id:

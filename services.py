@@ -8,6 +8,64 @@ from models import AnswerResult
 
 EVENT_TYPES = {"new_learned", "reviewed", "known", "mastered"}
 
+MINUTE_MS = 60 * 1000
+DAY_MS = 24 * 60 * 60 * 1000
+REVIEW_INTERVAL_MS = [
+    0,
+    10 * MINUTE_MS,
+    1 * DAY_MS,
+    3 * DAY_MS,
+    7 * DAY_MS,
+    14 * DAY_MS,
+    30 * DAY_MS,
+    90 * DAY_MS,
+]
+
+
+def review_interval_ms(good_series: int) -> int:
+    index = max(0, min(int(good_series or 0), len(REVIEW_INTERVAL_MS) - 1))
+    return REVIEW_INTERVAL_MS[index]
+
+
+def next_review_time_ms(last_repeat_time: int, good_series: int) -> int:
+    if not last_repeat_time:
+        return 0
+    return int(last_repeat_time) + review_interval_ms(good_series)
+
+
+def end_of_today_ms() -> int:
+    tomorrow = date.today() + timedelta(days=1)
+    return int(time.mktime(tomorrow.timetuple()) * 1000) - 1
+
+
+def review_due_count(categories: list[str] | None = None, cutoff_ms: int | None = None) -> int:
+    con = connect_sqlite(APP_DB)
+    params: list[str] = []
+    filters = ["status='review'"]
+    category_filter, category_params = category_filter_sql(categories or [])
+    if category_filter:
+        filters.append(category_filter)
+        params.extend(category_params)
+    rows = con.execute(
+        f"SELECT last_repeat_time, good_series FROM words WHERE {' AND '.join(filters)}",
+        params,
+    ).fetchall()
+    con.close()
+    cutoff = int(cutoff_ms if cutoff_ms is not None else time.time() * 1000)
+    return sum(
+        1
+        for row in rows
+        if next_review_time_ms(int(row["last_repeat_time"] or 0), int(row["good_series"] or 0)) <= cutoff
+    )
+
+
+def review_due_today_count(categories: list[str] | None = None) -> int:
+    return review_due_count(categories, end_of_today_ms())
+
+
+def review_due_now_count(categories: list[str] | None = None) -> int:
+    return review_due_count(categories, int(time.time() * 1000))
+
 
 def reword_learned_series() -> int:
     return 8
@@ -31,16 +89,34 @@ def category_filter_sql(categories: list[str]) -> tuple[str, list[str]]:
     return f"category IN ({','.join('?' for _ in categories)})", categories
 
 
-def dashboard_stats() -> dict:
+def dashboard_stats(categories: list[str] | None = None) -> dict:
     con = connect_sqlite(APP_DB)
-    total = con.execute("SELECT COUNT(*) FROM words").fetchone()[0]
-    due = con.execute("SELECT COUNT(*) FROM words WHERE status IN ('new', 'review')").fetchone()[0]
-    mastered = con.execute("SELECT COUNT(*) FROM words WHERE status IN ('mastered', 'known')").fetchone()[0]
-    review = con.execute("SELECT COUNT(*) FROM words WHERE status='review'").fetchone()[0]
-    new = con.execute("SELECT COUNT(*) FROM words WHERE status='new'").fetchone()[0]
-    hard = con.execute("SELECT COUNT(*) FROM words WHERE good_series=0 AND total_answers>0").fetchone()[0]
+    params: list[str] = []
+    filters: list[str] = []
+    category_filter, category_params = category_filter_sql(categories or [])
+    if category_filter:
+        filters.append(category_filter)
+        params.extend(category_params)
+    where = f" WHERE {' AND '.join(filters)}" if filters else ""
+    total = con.execute(f"SELECT COUNT(*) FROM words{where}", params).fetchone()[0]
+    due = con.execute(f"SELECT COUNT(*) FROM words{where + ' AND' if where else ' WHERE'} status IN ('new', 'review')", params).fetchone()[0]
+    mastered = con.execute(f"SELECT COUNT(*) FROM words{where + ' AND' if where else ' WHERE'} status IN ('mastered', 'known')", params).fetchone()[0]
+    review = con.execute(f"SELECT COUNT(*) FROM words{where + ' AND' if where else ' WHERE'} status='review'", params).fetchone()[0]
+    new = con.execute(f"SELECT COUNT(*) FROM words{where + ' AND' if where else ' WHERE'} status='new'", params).fetchone()[0]
+    hard = con.execute(f"SELECT COUNT(*) FROM words{where + ' AND' if where else ' WHERE'} good_series=0 AND total_answers>0", params).fetchone()[0]
     con.close()
-    return {"total": total, "due": due, "mastered": mastered, "review": review, "new": new, "hard": hard}
+    due_today = review_due_today_count(categories or [])
+    due_now = review_due_now_count(categories or [])
+    return {
+        "total": total,
+        "due": due,
+        "due_today": due_today,
+        "due_now": due_now,
+        "mastered": mastered,
+        "review": review,
+        "new": new,
+        "hard": hard,
+    }
 
 
 def study_status_filter(mode: str) -> str:
@@ -55,6 +131,23 @@ def find_random_word_id(mode: str, categories: list[str]) -> int | None:
     if category_filter:
         filters.append(category_filter)
         params.extend(category_params)
+    if mode == "review":
+        rows = con.execute(
+            f"SELECT id, last_repeat_time, good_series FROM words WHERE {' AND '.join(filters)}",
+            params,
+        ).fetchall()
+        con.close()
+        now_ms = int(time.time() * 1000)
+        due_ids = [
+            int(row["id"])
+            for row in rows
+            if next_review_time_ms(int(row["last_repeat_time"] or 0), int(row["good_series"] or 0)) <= now_ms
+        ]
+        if not due_ids:
+            return None
+        import random
+
+        return random.choice(due_ids)
     row = con.execute(
         f"SELECT id FROM words WHERE {' AND '.join(filters)} ORDER BY RANDOM() LIMIT 1",
         params,
