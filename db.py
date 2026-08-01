@@ -10,6 +10,54 @@ PROGRESS_JSON = DATA_DIR / "progress.json"
 APP_DB = DATA_DIR / "english_learning.sqlite"
 
 
+KNOWN_CATEGORY_LEVELS = {
+    "Oxford 3000 - A1": "A1",
+    "Oxford 3000 - A2": "A2",
+    "Oxford 3000 - B1": "B1",
+    "Oxford 3000 - B2": "B2",
+    "Oxford 5000 - B2": "B2",
+    "Oxford 5000 - C1": "C1",
+}
+CEFR_LEVEL_ORDER = {"A1": 0, "A2": 1, "B1": 2, "B2": 3, "C1": 4}
+
+
+def normalized_word_level(category: str, level: str = "A1") -> str:
+    """Return the explicit CEFR level for categories that define one."""
+    return KNOWN_CATEGORY_LEVELS.get(category, level or "A1")
+
+
+def normalized_word_key(word: str) -> str:
+    return " ".join((word or "").strip().lower().split())
+
+
+def propagate_known_word_levels(con: sqlite3.Connection) -> int:
+    """Copy reliable Oxford levels to exact matches in other categories."""
+    placeholders = ",".join("?" for _ in KNOWN_CATEGORY_LEVELS)
+    source_levels: dict[str, set[str]] = {}
+    for row in con.execute(
+        f"SELECT word, category FROM words WHERE category IN ({placeholders})",
+        tuple(KNOWN_CATEGORY_LEVELS),
+    ):
+        key = normalized_word_key(row["word"])
+        if key:
+            source_levels.setdefault(key, set()).add(KNOWN_CATEGORY_LEVELS[row["category"]])
+
+    inferred_levels = {
+        key: min(levels, key=CEFR_LEVEL_ORDER.__getitem__)
+        for key, levels in source_levels.items()
+    }
+    updates: list[tuple[str, int]] = []
+    for row in con.execute(
+        f"SELECT id, word, level FROM words WHERE category NOT IN ({placeholders})",
+        tuple(KNOWN_CATEGORY_LEVELS),
+    ):
+        inferred = inferred_levels.get(normalized_word_key(row["word"]))
+        if inferred and inferred != (row["level"] or "A1"):
+            updates.append((inferred, int(row["id"])))
+    con.executemany("UPDATE words SET level = ? WHERE id = ?", updates)
+    return len(updates)
+
+
 def connect_sqlite(path: Path = APP_DB) -> sqlite3.Connection:
     con = sqlite3.connect(path)
     con.row_factory = sqlite3.Row
@@ -37,7 +85,8 @@ def ensure_database() -> None:
             transcription TEXT DEFAULT '',
             mnemonic_image TEXT DEFAULT '',
             example_en TEXT DEFAULT '',
-            example_ru TEXT DEFAULT ''
+            example_ru TEXT DEFAULT '',
+            learning_selected INTEGER DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_words_word ON words(word);
         CREATE INDEX IF NOT EXISTS idx_words_category ON words(category);
@@ -63,6 +112,7 @@ def ensure_database() -> None:
         "mnemonic_image": "TEXT DEFAULT ''",
         "example_en": "TEXT DEFAULT ''",
         "example_ru": "TEXT DEFAULT ''",
+        "learning_selected": "INTEGER DEFAULT 0",
     }.items():
         if column not in existing_columns:
             con.execute(f"ALTER TABLE words ADD COLUMN {column} {definition}")
@@ -82,7 +132,10 @@ def ensure_database() -> None:
                 (
                     row.get("word", ""),
                     row.get("translation", ""),
-                    row.get("level", "A1"),
+                    normalized_word_level(
+                        row.get("category", "Imported"),
+                        row.get("level", "A1"),
+                    ),
                     row.get("category", "Imported"),
                     row.get("status", "new"),
                     int(row.get("reword_id", 0) or 0),
@@ -108,5 +161,6 @@ def ensure_database() -> None:
             )
     else:
         con.execute("INSERT OR IGNORE INTO progress(name, value) VALUES ('daily_goal', '10')")
+    propagate_known_word_levels(con)
     con.commit()
     con.close()

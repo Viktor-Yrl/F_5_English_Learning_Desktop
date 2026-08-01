@@ -1,26 +1,28 @@
-﻿import json
+﻿import ctypes
 import sys
 import time
-import urllib.error
-from datetime import date
 from pathlib import Path
 
 import audio_service
-import backup_service
 import category_service
+from content.english_rules import ENGLISH_RULE_FILES
 import db as database
 import services
 import settings_service
 import translation_service
-from PyQt6.QtCore import QPointF, QRectF, QSize, QTimer, QUrl, Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QColor, QDesktopServices, QPainter, QPalette, QPen, QPixmap, QPolygonF
+from study_session import StudySession
+from ui.dialogs import CategoryWordsDialog, WordEditDialog
+from ui.table_model import WordTableModel, sql_quote
+from ui.theme import COLORS, DARK_COLORS, LIGHT_COLORS, TRANSLATIONS
+from ui.widgets import EyeRevealButton, PillSwitch, PlayButton, SidebarIcon, StatsChartWidget
+from workers import AudioWorker, BackupWorker
+from PyQt6.QtCore import QSize, QTimer, QUrl, Qt
+from PyQt6.QtGui import QColor, QDesktopServices, QIcon, QPalette, QPixmap
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtSql import QSqlDatabase, QSqlTableModel
 from PyQt6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QComboBox,
-    QDialog,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -48,822 +50,25 @@ DATA_DIR = APP_DIR / "data"
 WORDS_JSON = DATA_DIR / "words.json"
 PROGRESS_JSON = DATA_DIR / "progress.json"
 APP_DB = DATA_DIR / "english_learning.sqlite"
-
-
-COLORS = {
-    "bg": "#f7f9fc",
-    "sidebar": "#ffffff",
-    "panel": "#ffffff",
-    "panel_alt": "#f4f7fb",
-    "line": "#e4e9f1",
-    "text": "#10203f",
-    "muted": "#66758f",
-    "blue": "#2367f6",
-    "blue_soft": "#eaf1ff",
-    "pink": "#ef4d82",
-    "pink_soft": "#ffe8f1",
-    "yellow": "#f59e0b",
-    "yellow_soft": "#fff5dc",
-    "green": "#22a865",
-    "green_soft": "#e5f7ed",
-}
-
-LIGHT_COLORS = COLORS.copy()
-DARK_COLORS = {
-    "bg": "#1b1c20",
-    "sidebar": "#202228",
-    "panel": "#2a2c33",
-    "panel_alt": "#333642",
-    "line": "#454955",
-    "text": "#f2f4f8",
-    "muted": "#b0b7c5",
-    "blue": "#6d8cff",
-    "blue_soft": "#273456",
-    "pink": "#ef6bab",
-    "pink_soft": "#49303f",
-    "yellow": "#ffd166",
-    "yellow_soft": "#4a412b",
-    "green": "#55c583",
-    "green_soft": "#2b4637",
-}
-
-TRANSLATIONS = {
-    "English": {
-        "window_title": "MemWord - English Learning Desktop",
-        "sidebar": ["MemWord", "Search", "Category choice", "Study", "English rules", "Statistics", "Dictionary", "Settings", "About"],
-    },
-    "Русский": {
-        "window_title": "MemWord - изучение английского",
-        "sidebar": ["MemWord", "Search", "Category choice", "Study", "English rules", "Statistics", "Dictionary", "Settings", "About"],
-    },
-}
+APP_ICON = APP_DIR / "assets" / "memword.ico"
+DEFAULT_STUDY_CATEGORY = "тестовая категория"
 
 
 connect_sqlite = database.connect_sqlite
 
-
-def sql_quote(value: str) -> str:
-    return value.replace("'", "''")
-
-
-class BackupWorker(QThread):
-    done = pyqtSignal(str)
-    failed = pyqtSignal(str)
-
-    def __init__(self, action: str, path: Path):
-        super().__init__()
-        self.action = action
-        self.path = path
-
-    def run(self) -> None:
-        try:
-            if self.action == "import":
-                backup_service.import_reword_backup(self.path)
-                self.done.emit("Backup imported")
-            else:
-                backup_service.export_reword_backup(self.path)
-                self.done.emit("Backup exported")
-        except Exception as exc:
-            self.failed.emit(str(exc))
-
-
-class AudioWorker(QThread):
-    ready = pyqtSignal(str)
-    fallback = pyqtSignal(str, str, float)
-    failed = pyqtSignal(str)
-
-    def __init__(self, text: str, voice: str, rate: float):
-        super().__init__()
-        self.text = text
-        self.voice = voice
-        self.rate = rate
-
-    def run(self) -> None:
-        try:
-            path = audio_service.synthesize_edge_tts(self.text, self.voice, self.rate)
-            self.ready.emit(str(path))
-        except ImportError:
-            self.fallback.emit(self.text, self.voice, self.rate)
-        except Exception as exc:
-            self.failed.emit(str(exc))
-
-
-class WordTableModel(QSqlTableModel):
-    HEADERS = {
-        1: "Word",
-        2: "Translation",
-        3: "Level",
-        4: "Category",
-        5: "Status",
-        7: "Answers",
-        8: "Series",
-    }
-
-    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        value = super().data(index, role)
-        if role == Qt.ItemDataRole.ForegroundRole:
-            status = self.index(index.row(), 5).data()
-            if status == "mastered":
-                return QColor(COLORS["green"])
-            if status == "review":
-                return QColor(COLORS["yellow"])
-            if status == "new":
-                return QColor(COLORS["pink"])
-        return value
-
-
-class PillSwitch(QCheckBox):
-    def __init__(self):
-        super().__init__()
-        self.setFixedSize(56, 30)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setText("")
-        self.stateChanged.connect(lambda _: self.update())
-
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        checked = self.isChecked()
-        track_color = QColor(COLORS["blue"] if checked else COLORS["panel_alt"])
-        border_color = QColor(COLORS["blue"] if checked else COLORS["line"])
-        knob_color = QColor("#ffffff" if checked else COLORS["muted"])
-
-        painter.setPen(QPen(border_color, 1))
-        painter.setBrush(track_color)
-        painter.drawRoundedRect(1, 1, 54, 28, 14, 14)
-
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(knob_color)
-        knob_x = 29 if checked else 4
-        painter.drawEllipse(knob_x, 4, 22, 22)
-
-
-class CategoryWordsDialog(QDialog):
-    def __init__(self, category: str, db: QSqlDatabase, parent=None):
-        super().__init__(parent)
-        self.category = category
-        self.db = db
-        self.setWindowTitle(category)
-        self.resize(1040, 720)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 22, 24, 20)
-        layout.setSpacing(14)
-
-        header = QHBoxLayout()
-        title_box = QVBoxLayout()
-        title = QLabel(category)
-        title.setStyleSheet("font-size: 28px; font-weight: 800; color: #10203f;")
-        self.stats_label = QLabel("")
-        self.stats_label.setStyleSheet("color: #66758f; font-size: 15px;")
-        title_box.addWidget(title)
-        title_box.addWidget(self.stats_label)
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.accept)
-        header.addLayout(title_box, 1)
-        header.addWidget(close_btn)
-        layout.addLayout(header)
-
-        actions = QHBoxLayout()
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("Search words in this category...")
-        self.search.textChanged.connect(self.apply_filter)
-        open_main = QPushButton("Open in main list")
-        open_main.setObjectName("primary")
-        open_main.clicked.connect(self.open_in_main)
-        start = QPushButton("Start category review")
-        start.clicked.connect(self.start_review)
-        actions.addWidget(self.search, 1)
-        actions.addWidget(start)
-        actions.addWidget(open_main)
-        layout.addLayout(actions)
-
-        self.model = WordTableModel(self, self.db)
-        self.model.setTable("words")
-        self.model.setEditStrategy(QSqlTableModel.EditStrategy.OnFieldChange)
-        for column, title_text in WordTableModel.HEADERS.items():
-            self.model.setHeaderData(column, Qt.Orientation.Horizontal, title_text)
-
-        self.table = QTableView()
-        self.table.setModel(self.model)
-        self.table.setAlternatingRowColors(True)
-        palette = self.table.palette()
-        palette.setColor(QPalette.ColorRole.Base, QColor(COLORS["panel"]))
-        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(COLORS["panel_alt"]))
-        palette.setColor(QPalette.ColorRole.Text, QColor(COLORS["text"]))
-        self.table.setPalette(palette)
-        self.table.setSortingEnabled(True)
-        self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(52)
-        self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        for column in [0, 6, 9, 10, 11, 12, 13]:
-            self.table.hideColumn(column)
-        self.table.setColumnWidth(1, 190)
-        self.table.setColumnWidth(2, 360)
-        self.table.setColumnWidth(3, 80)
-        self.table.setColumnWidth(4, 190)
-        self.table.setColumnWidth(5, 120)
-        layout.addWidget(self.table, 1)
-
-        self.setStyleSheet(
-            f"""
-            QDialog, QWidget {{
-                background: {COLORS['bg']};
-                color: {COLORS['text']};
-                font-family: Segoe UI;
-                font-size: 14px;
-            }}
-            QLineEdit {{
-                background: {COLORS['panel']};
-                color: {COLORS['text']};
-                border: 1px solid {COLORS['line']};
-                border-radius: 10px;
-                padding: 10px 14px;
-                font-size: 15px;
-            }}
-            QPushButton {{
-                background: {COLORS['panel']};
-                color: {COLORS['text']};
-                border: 1px solid {COLORS['line']};
-                border-radius: 8px;
-                padding: 10px 16px;
-                font-weight: 600;
-            }}
-            QPushButton#primary {{
-                background: {COLORS['blue']};
-                color: #ffffff;
-                border-color: {COLORS['blue']};
-            }}
-            QTableView {{
-                background: {COLORS['panel']};
-                alternate-background-color: {COLORS['panel_alt']};
-                color: {COLORS['text']};
-                gridline-color: {COLORS['line']};
-                border: 1px solid {COLORS['line']};
-                border-radius: 10px;
-                selection-background-color: {COLORS['blue_soft']};
-                selection-color: {COLORS['text']};
-            }}
-            QHeaderView::section {{
-                background: {COLORS['panel_alt']};
-                color: {COLORS['muted']};
-                padding: 12px 10px;
-                border: 0;
-                border-bottom: 1px solid {COLORS['line']};
-                font-weight: 700;
-            }}
-            """
-        )
-        self.apply_filter("")
-
-    def category_where(self) -> str:
-        return f"category = '{sql_quote(self.category)}'"
-
-    def apply_filter(self, text: str) -> None:
-        text = sql_quote(text.strip())
-        filters = [self.category_where()]
-        if text:
-            filters.append(f"(word LIKE '%{text}%' OR translation LIKE '%{text}%' OR level LIKE '%{text}%')")
-        self.model.setFilter(" AND ".join(filters))
-        self.model.select()
-        self.update_stats()
-
-    def update_stats(self) -> None:
-        con = connect_sqlite(APP_DB)
-        total, mastered = con.execute(
-            """
-            SELECT
-                COUNT(*),
-                SUM(CASE WHEN status IN ('mastered', 'known') THEN 1 ELSE 0 END)
-            FROM words
-            WHERE category=?
-            """,
-            (self.category,),
-        ).fetchone()
-        con.close()
-        total = int(total or 0)
-        mastered = int(mastered or 0)
-        percent = round(mastered * 100 / total) if total else 0
-        self.stats_label.setText(f"{total} words    {percent}% mastered")
-
-    def open_in_main(self) -> None:
-        if self.parent() and hasattr(self.parent(), "open_category_in_main"):
-            self.parent().open_category_in_main(self.category)
-        self.accept()
-
-    def start_review(self) -> None:
-        if self.parent() and hasattr(self.parent(), "start_category_review"):
-            self.parent().start_category_review(self.category)
-        self.accept()
-
-
-class WordEditDialog(QDialog):
-    def __init__(self, word_id: int | None = None, parent=None):
-        super().__init__(parent)
-        self.word_id = word_id
-        self.is_new = word_id is None
-        self.image_path = ""
-        self.setWindowTitle("Add word" if self.is_new else "Edit word")
-        self.resize(720, 680)
-
-        if self.is_new:
-            self.row = {
-                "word": "",
-                "translation": "",
-                "level": "A1",
-                "category": self.default_category(),
-                "status": "new",
-                "transcription": "",
-                "mnemonic_image": "",
-                "example_en": "",
-                "example_ru": "",
-            }
-        else:
-            con = connect_sqlite(APP_DB)
-            self.row = con.execute("SELECT * FROM words WHERE id=?", (word_id,)).fetchone()
-            con.close()
-            if not self.row:
-                raise ValueError("Word not found")
-        self.image_path = self.row["mnemonic_image"] or ""
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 22, 24, 20)
-        layout.setSpacing(12)
-        title = QLabel("Add word" if self.is_new else "Edit word")
-        title.setStyleSheet("font-size: 28px; font-weight: 800;")
-        layout.addWidget(title)
-
-        self.word_input = self.line("English word", self.row["word"] or "")
-        self.transcription_input = self.line("Transcription (optional)", self.row["transcription"] or "")
-        self.translation_input = self.line("Translation", self.row["translation"] or "")
-        meta_row = QHBoxLayout()
-        self.level_input = self.line("Level", self.row["level"] or "A1")
-        self.category_input = self.line("Category", self.row["category"] or "Imported")
-        meta_row.addWidget(self.level_input)
-        meta_row.addWidget(self.category_input, 1)
-        layout.addWidget(self.word_input)
-        layout.addWidget(self.transcription_input)
-        layout.addWidget(self.translation_input)
-        layout.addLayout(meta_row)
-
-        translate_row = QHBoxLayout()
-        auto_translate = QPushButton("Auto translate")
-        auto_translate.setObjectName("primary")
-        auto_translate.clicked.connect(self.auto_translate)
-        reverso = QPushButton("Open in Reverso Context")
-        reverso.clicked.connect(self.open_reverso_context)
-        deepl = QPushButton("Open in DeepL")
-        deepl.clicked.connect(self.open_deepl)
-        translate_row.addStretch(1)
-        translate_row.addWidget(deepl)
-        translate_row.addWidget(reverso)
-        translate_row.addWidget(auto_translate)
-        layout.addLayout(translate_row)
-
-        image_row = QHBoxLayout()
-        self.image_preview = QLabel("No mnemonic image")
-        self.image_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.image_preview.setFixedSize(220, 130)
-        self.image_preview.setStyleSheet(f"border: 1px solid {COLORS['line']}; border-radius: 10px; color: {COLORS['muted']};")
-        choose_image = QPushButton("Change mnemonic image")
-        choose_image.clicked.connect(self.choose_image)
-        clear_image = QPushButton("Remove image")
-        clear_image.clicked.connect(self.clear_image)
-        image_row.addWidget(self.image_preview)
-        image_row.addWidget(choose_image)
-        image_row.addWidget(clear_image)
-        layout.addLayout(image_row)
-
-        self.example_en_input = self.line("Example sentence in English", self.row["example_en"] or "")
-        self.example_ru_input = self.line("Example translation", self.row["example_ru"] or "")
-        layout.addWidget(self.example_en_input)
-        layout.addWidget(self.example_ru_input)
-
-        buttons = QHBoxLayout()
-        save = QPushButton("Save")
-        save.setObjectName("primary")
-        save.clicked.connect(self.save)
-        cancel = QPushButton("Cancel")
-        cancel.clicked.connect(self.reject)
-        buttons.addStretch(1)
-        buttons.addWidget(cancel)
-        buttons.addWidget(save)
-        layout.addLayout(buttons)
-
-        self.setStyleSheet(
-            f"""
-            QDialog, QWidget {{ background: {COLORS['bg']}; color: {COLORS['text']}; font-family: Segoe UI; font-size: 14px; }}
-            QLineEdit {{ background: {COLORS['panel']}; color: {COLORS['text']}; border: 1px solid {COLORS['line']}; border-radius: 10px; padding: 11px 14px; font-size: 16px; }}
-            QPushButton {{ background: {COLORS['panel']}; color: {COLORS['text']}; border: 1px solid {COLORS['line']}; border-radius: 8px; padding: 10px 16px; font-weight: 600; }}
-            QPushButton:hover {{ background: {COLORS['blue_soft']}; border-color: {COLORS['blue']}; color: {COLORS['blue']}; }}
-            QPushButton:pressed {{ background: {COLORS['blue']}; border-color: {COLORS['blue']}; color: #ffffff; }}
-            QPushButton#primary {{ background: {COLORS['blue']}; color: #ffffff; border-color: {COLORS['blue']}; }}
-            QPushButton#primary:hover {{ background: {COLORS['blue']}; color: #ffffff; border-color: {COLORS['blue']}; }}
-            QPushButton#primary:pressed {{ background: #1d55d3; color: #ffffff; border-color: #1d55d3; }}
-            """
-        )
-        self.refresh_image_preview()
-
-    def default_category(self) -> str:
-        parent = self.parent()
-        if parent and hasattr(parent, "chosen_review_categories"):
-            categories = parent.chosen_review_categories()
-            if categories:
-                return categories[0]
-        return "Imported"
-
-    def line(self, placeholder: str, value: str) -> QLineEdit:
-        field = QLineEdit()
-        field.setPlaceholderText(placeholder)
-        field.setText(value)
-        return field
-
-    def choose_image(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Choose mnemonic image",
-            str(APP_DIR),
-            "Images (*.png *.jpg *.jpeg *.webp *.bmp);;All files (*.*)",
-        )
-        if path:
-            self.image_path = path
-            self.refresh_image_preview()
-
-    def clear_image(self) -> None:
-        self.image_path = ""
-        self.refresh_image_preview()
-
-    def auto_translate(self) -> None:
-        word = self.word_input.text().strip()
-        if not word:
-            QMessageBox.information(self, "Auto translate", "Enter an English word first.")
-            return
-        parent = self.parent()
-        if not parent or not hasattr(parent, "setting_value"):
-            QMessageBox.information(self, "Auto translate", "Settings are unavailable.")
-            return
-        provider = "MyMemory"
-        try:
-            translated = translation_service.translate_text(str(provider), word, parent.setting_value)
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="ignore")
-            QMessageBox.critical(self, f"{provider} error", f"HTTP {exc.code}\n{detail}")
-            return
-        except Exception as exc:
-            QMessageBox.critical(self, f"{provider} error", str(exc))
-            return
-        self.translation_input.setText(translated)
-        if not self.example_en_input.text().strip():
-            self.example_en_input.setText(f"I want to remember the word {word}.")
-        if not self.example_ru_input.text().strip():
-            try:
-                self.example_ru_input.setText(
-                    translation_service.translate_text(str(provider), self.example_en_input.text().strip(), parent.setting_value)
-                )
-            except Exception:
-                pass
-
-    def open_reverso_context(self) -> None:
-        word = self.word_input.text().strip()
-        if not word:
-            QMessageBox.information(self, "Reverso Context", "Enter an English word first.")
-            return
-        url = translation_service.reverso_context_url(word)
-        QDesktopServices.openUrl(QUrl(url))
-
-    def open_deepl(self) -> None:
-        word = self.word_input.text().strip()
-        if not word:
-            QMessageBox.information(self, "DeepL", "Enter an English word first.")
-            return
-        url = translation_service.deepl_web_url(word)
-        QDesktopServices.openUrl(QUrl(url))
-
-    def refresh_image_preview(self) -> None:
-        if self.image_path and Path(self.image_path).exists():
-            pixmap = QPixmap(self.image_path)
-            self.image_preview.setPixmap(
-                pixmap.scaled(220, 130, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            )
-            return
-        self.image_preview.setPixmap(QPixmap())
-        self.image_preview.setText("No mnemonic image")
-
-    def save(self) -> None:
-        word = self.word_input.text().strip()
-        if not word:
-            QMessageBox.warning(self, self.windowTitle(), "English word can not be empty.")
-            return
-        con = connect_sqlite(APP_DB)
-        if self.is_new:
-            cursor = con.execute(
-                """
-                INSERT INTO words(
-                    word, transcription, translation, level, category, status,
-                    mnemonic_image, example_en, example_ru
-                ) VALUES (?, ?, ?, ?, ?, 'new', ?, ?, ?)
-                """,
-                (
-                    word,
-                    self.transcription_input.text().strip(),
-                    self.translation_input.text().strip(),
-                    self.level_input.text().strip() or "A1",
-                    self.category_input.text().strip() or "Imported",
-                    self.image_path,
-                    self.example_en_input.text().strip(),
-                    self.example_ru_input.text().strip(),
-                ),
-            )
-            self.word_id = int(cursor.lastrowid)
-        else:
-            con.execute(
-                """
-                UPDATE words
-                SET word=?, transcription=?, translation=?, level=?, category=?,
-                    mnemonic_image=?, example_en=?, example_ru=?
-                WHERE id=?
-                """,
-                (
-                    word,
-                    self.transcription_input.text().strip(),
-                    self.translation_input.text().strip(),
-                    self.level_input.text().strip() or "A1",
-                    self.category_input.text().strip() or "Imported",
-                    self.image_path,
-                    self.example_en_input.text().strip(),
-                    self.example_ru_input.text().strip(),
-                    self.word_id,
-                ),
-            )
-        con.commit()
-        con.close()
-        self.accept()
-
-
-class StatsChartWidget(QWidget):
-    SERIES = [
-        ("new_learned", "New learned", "#ef6bab"),
-        ("reviewed", "Reviewed", "#ffd166"),
-        ("mastered", "Mastered", "#55c583"),
-        ("known", "Already known", "#cfd1d4"),
-    ]
-
-    def __init__(self):
-        super().__init__()
-        self.days: list[str] = []
-        self.data: dict[str, dict[str, int]] = {}
-        self.setMinimumHeight(420)
-
-    def set_stats(self, days: list[str], data: dict[str, dict[str, int]]) -> None:
-        self.days = days
-        self.data = data
-        self.update()
-
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), QColor(COLORS["panel"]))
-
-        painter.setPen(QColor(COLORS["text"]))
-        painter.setFont(self.font())
-        painter.drawText(18, 18, self.width() - 36, 24, Qt.AlignmentFlag.AlignLeft, "Activity over time")
-
-        left, top, right, bottom = 64, 56, 30, 112
-        width = max(1, self.width() - left - right)
-        height = max(1, self.height() - top - bottom)
-        plot_left = left
-        plot_top = top
-        plot_bottom = top + height
-
-        totals = [
-            sum(self.data.get(day, {}).get(key, 0) for key, _, _ in self.SERIES)
-            for day in self.days
-        ]
-        max_value = max(totals + [10])
-        step = 15 if max_value <= 120 else max(25, ((max_value // 8 + 24) // 25) * 25)
-        chart_max = max(step * 8, ((max_value + step - 1) // step) * step)
-
-        grid_pen = QPen(QColor("#464a54"))
-        grid_pen.setWidth(1)
-        painter.setPen(grid_pen)
-        label_color = QColor("#cfd3dc")
-        for i in range(9):
-            value = chart_max * i // 8
-            y = plot_bottom - int(height * (value / chart_max))
-            painter.drawLine(plot_left, y, plot_left + width, y)
-            painter.setPen(label_color if i % 2 == 0 else QColor("#8f96a5"))
-            if i % 2 == 0 or i == 0:
-                painter.drawText(8, y - 9, 48, 18, Qt.AlignmentFlag.AlignRight, str(value))
-            painter.setPen(grid_pen)
-
-        if not self.days:
-            painter.setPen(label_color)
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No statistics yet")
-            return
-
-        slot = width / max(1, len(self.days))
-        bar_width = max(3, min(46, int(slot * 0.48)))
-        label_step = self.day_label_step(slot)
-        for index, day in enumerate(self.days):
-            x = int(plot_left + slot * index + (slot - bar_width) / 2)
-            y_cursor = plot_bottom
-            for key, _, color in self.SERIES:
-                value = self.data.get(day, {}).get(key, 0)
-                if value <= 0:
-                    continue
-                bar_h = max(2, int(height * value / chart_max))
-                y_cursor -= bar_h
-                painter.fillRect(x, y_cursor, bar_width, bar_h, QColor(color))
-                if bar_h > 18:
-                    painter.setPen(QColor("#333333"))
-                    painter.drawText(x, y_cursor + 2, bar_width, 18, Qt.AlignmentFlag.AlignCenter, str(value))
-
-            should_draw_label = index == 0 or index == len(self.days) - 1 or index % label_step == 0
-            if should_draw_label:
-                painter.setPen(label_color)
-                painter.drawText(
-                    int(plot_left + slot * index - 26),
-                    plot_bottom + 12,
-                    56,
-                    28,
-                    Qt.AlignmentFlag.AlignCenter,
-                    self.format_day_label(day),
-                )
-
-        legend_y = self.height() - 42
-        legend_width = 160
-        start_x = max(left, int((self.width() - legend_width * len(self.SERIES)) / 2))
-        for index, (_, title, color) in enumerate(self.SERIES):
-            x = start_x + index * legend_width
-            painter.fillRect(x, legend_y + 4, 12, 12, QColor(color))
-            painter.setPen(QColor(COLORS["muted"]))
-            painter.drawText(x + 20, legend_y, legend_width - 22, 22, Qt.AlignmentFlag.AlignLeft, title)
-
-    def format_day_label(self, value: str) -> str:
-        try:
-            current = date.fromisoformat(value)
-        except ValueError:
-            return value
-        if current == date.today():
-            return "Today"
-        return current.strftime("%d %b")
-
-    def day_label_step(self, slot_width: float) -> int:
-        min_label_width = 58
-        if slot_width >= min_label_width:
-            return 1
-        return max(2, int(min_label_width / max(1, slot_width)) + 1)
-
-
-class PlayButton(QPushButton):
-    def __init__(self):
-        super().__init__("")
-        self.setFixedSize(42, 42)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet("background: transparent; border: 0;")
-
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        pressed = self.isDown()
-        painter.setPen(QPen(QColor("#4d5f94"), 1.2))
-        painter.setBrush(QColor("#6d8cff" if pressed else "#222631"))
-        painter.drawRoundedRect(QRectF(1, 1, self.width() - 2, self.height() - 2), 10, 10)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#ffffff" if pressed else "#6d8cff"))
-        triangle = QPolygonF([
-            QPointF(17, 13),
-            QPointF(17, 29),
-            QPointF(29, 21),
-        ])
-        painter.drawPolygon(triangle)
-
-
-class EyeRevealButton(QPushButton):
-    def __init__(self):
-        super().__init__("")
-        self.setFixedSize(42, 42)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setToolTip("Show mnemonic image, translation and examples")
-        self.setStyleSheet("background: transparent; border: 0;")
-
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        pressed = self.isDown()
-        hovered = self.underMouse()
-        bg = "#6d8cff" if pressed else "#263251" if hovered else "#1b1e25"
-        border = "#6d8cff" if hovered or pressed else "#343946"
-        text_color = "#ffffff" if pressed else "#8fa6ff"
-        painter.setPen(QPen(QColor(border), 1.2))
-        painter.setBrush(QColor(bg))
-        painter.drawRoundedRect(QRectF(1, 1, self.width() - 2, self.height() - 2), 10, 10)
-
-        painter.setPen(QPen(QColor(text_color), 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawEllipse(QRectF(10, 14, 22, 14))
-        painter.setBrush(QColor(text_color))
-        painter.drawEllipse(QRectF(19, 19, 4, 4))
-
-
-class SidebarIcon(QWidget):
-    def __init__(self, kind: str):
-        super().__init__()
-        self.kind = kind
-        self.selected = False
-        self.setFixedSize(38, 38)
-
-    def set_selected(self, selected: bool) -> None:
-        self.selected = selected
-        self.update()
-
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.scale(self.width() / 46, self.height() / 46)
-        color = QColor(COLORS["blue"] if self.selected else COLORS["muted"])
-        pen = QPen(color, 2.4)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-
-        if self.kind == "logo":
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(COLORS["blue"]))
-            painter.drawRoundedRect(QRectF(5, 5, 36, 36), 8, 8)
-            painter.setPen(QPen(QColor("#ffffff"), 2.4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
-            painter.drawLine(16, 16, 22, 20)
-            painter.drawLine(16, 16, 16, 30)
-            painter.drawLine(16, 30, 22, 33)
-            painter.drawLine(30, 16, 24, 20)
-            painter.drawLine(30, 16, 30, 30)
-            painter.drawLine(30, 30, 24, 33)
-            painter.drawLine(23, 20, 23, 33)
-            return
-
-        if self.kind == "folder":
-            painter.drawLine(8, 17, 18, 17)
-            painter.drawLine(18, 17, 22, 21)
-            painter.drawLine(22, 21, 38, 21)
-            painter.drawLine(38, 21, 38, 34)
-            painter.drawLine(38, 34, 8, 34)
-            painter.drawLine(8, 34, 8, 17)
-        elif self.kind == "search":
-            painter.drawEllipse(QRectF(11, 11, 18, 18))
-            painter.drawLine(27, 27, 37, 37)
-        elif self.kind == "study":
-            painter.drawLine(8, 20, 23, 13)
-            painter.drawLine(23, 13, 38, 20)
-            painter.drawLine(38, 20, 23, 27)
-            painter.drawLine(23, 27, 8, 20)
-            painter.drawLine(15, 25, 15, 32)
-            painter.drawLine(15, 32, 23, 36)
-            painter.drawLine(23, 36, 31, 32)
-            painter.drawLine(31, 32, 31, 25)
-        elif self.kind == "stats":
-            painter.drawRoundedRect(QRectF(10, 27, 5, 9), 2, 2)
-            painter.drawRoundedRect(QRectF(20, 20, 5, 16), 2, 2)
-            painter.drawRoundedRect(QRectF(30, 12, 5, 24), 2, 2)
-        elif self.kind == "rules":
-            painter.drawRoundedRect(QRectF(12, 9, 24, 30), 3, 3)
-            painter.drawLine(17, 18, 31, 18)
-            painter.drawLine(17, 25, 31, 25)
-            painter.drawLine(17, 32, 27, 32)
-        elif self.kind == "book":
-            painter.drawLine(23, 16, 23, 35)
-            painter.drawLine(23, 18, 14, 15)
-            painter.drawLine(14, 15, 9, 17)
-            painter.drawLine(9, 17, 9, 33)
-            painter.drawLine(9, 33, 14, 31)
-            painter.drawLine(14, 31, 23, 35)
-            painter.drawLine(23, 18, 32, 15)
-            painter.drawLine(32, 15, 37, 17)
-            painter.drawLine(37, 17, 37, 33)
-            painter.drawLine(37, 33, 32, 31)
-            painter.drawLine(32, 31, 23, 35)
-        elif self.kind == "info":
-            painter.drawEllipse(QRectF(12, 10, 22, 22))
-            painter.drawLine(23, 20, 23, 28)
-            painter.drawPoint(23, 15)
-        elif self.kind == "settings":
-            painter.drawEllipse(QRectF(18, 18, 10, 10))
-            painter.drawEllipse(QRectF(12, 12, 22, 22))
-            for x1, y1, x2, y2 in [(23, 7, 23, 12), (23, 34, 23, 39), (7, 23, 12, 23), (34, 23, 39, 23), (12, 12, 15, 15), (31, 31, 34, 34), (34, 12, 31, 15), (15, 31, 12, 34)]:
-                painter.drawLine(x1, y1, x2, y2)
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("MemWord - English Learning Desktop")
+        self.setWindowIcon(QIcon(str(APP_ICON)))
         self.resize(1440, 900)
         self.worker = None
         self.active_category = ""
         self._updating_category_checks = False
         self.study_mode = "learn"
+        self.study_session = StudySession()
         self.audio_worker = None
         self.audio_output = QAudioOutput(self)
         self.audio_player = QMediaPlayer(self)
@@ -1171,7 +376,7 @@ class MainWindow(QMainWindow):
 
     def normalized_language(self, value: str | None = None) -> str:
         language = value or self.setting_value("ui_language", "Match system language")
-        if language == "Русский":
+        if language in ("Russian", "Русский"):
             return "Русский"
         return "English"
 
@@ -1290,10 +495,19 @@ class MainWindow(QMainWindow):
         self.pick_random_word()
 
     def chosen_categories(self) -> list[str]:
-        categories = self.setting_value("chosen_categories", [])
+        categories = self.setting_value("chosen_categories", None)
+        if categories is None:
+            default_categories = self.default_chosen_categories()
+            if default_categories:
+                self.save_setting("chosen_categories", default_categories)
+            return default_categories
         if not isinstance(categories, list):
             return []
         return [str(category) for category in categories if str(category).strip()]
+
+    def default_chosen_categories(self) -> list[str]:
+        names = {category["name"] for category in self.category_stats()}
+        return [DEFAULT_STUDY_CATEGORY] if DEFAULT_STUDY_CATEGORY in names else []
 
     def save_chosen_categories(self, categories: list[str]) -> None:
         unique_categories = sorted({category for category in categories if category})
@@ -1319,14 +533,14 @@ class MainWindow(QMainWindow):
             return
         categories = self.chosen_categories()
         if not categories:
-            self.chosen_categories_label.setText("Выбрано для учёбы и повторения: ничего")
+            self.chosen_categories_label.setText("Selected for study and review: none")
         elif len(categories) == 1:
-            self.chosen_categories_label.setText(f"Выбрано для учёбы и повторения: {categories[0]}")
+            self.chosen_categories_label.setText(f"Selected for study and review: {categories[0]}")
         else:
             preview = ", ".join(categories[:6])
             if len(categories) > 6:
-                preview += f" и ещё {len(categories) - 6}"
-            self.chosen_categories_label.setText(f"Выбрано для учёбы и повторения: {preview}")
+                preview += f" and {len(categories) - 6} more"
+            self.chosen_categories_label.setText(f"Selected for study and review: {preview}")
 
     def stats(self) -> dict:
         return services.dashboard_stats()
@@ -1629,16 +843,15 @@ class MainWindow(QMainWindow):
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(48)
         self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setDefaultAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        for column in [0, 6, 9, 10, 11, 12, 13]:
+        for column in [0, 6, 7, 8, 9, 10, 11, 12, 13, 14]:
             self.table.hideColumn(column)
         self.table.setColumnWidth(1, 180)
         self.table.setColumnWidth(2, 300)
         self.table.setColumnWidth(3, 90)
         self.table.setColumnWidth(4, 190)
         self.table.setColumnWidth(5, 120)
-        self.table.setColumnWidth(7, 90)
-        self.table.setColumnWidth(8, 90)
 
     def build_study_queue(self, values: dict) -> QFrame:
         card = self.card()
@@ -1825,7 +1038,7 @@ class MainWindow(QMainWindow):
                 [
                     self.setting_row("Theme", "Light", self.choice_control("theme", ["Light", "Dark", "System"], "Light")),
                     self.setting_row("Turn on animation", "", self.switch_control("animation", True)),
-                    self.setting_row("UI language", "Match system language", self.choice_control("ui_language", ["Match system language", "Русский", "English"], "Match system language")),
+                    self.setting_row("UI language", "Match system language", self.choice_control("ui_language", ["Match system language", "Russian", "English"], "Match system language")),
                 ],
             )
         )
@@ -1833,7 +1046,7 @@ class MainWindow(QMainWindow):
             self.settings_section(
                 "General",
                 [
-                    self.setting_row("Native language", "Русский", self.choice_control("native_language", ["Русский", "English", "Українська"], "Русский")),
+                    self.setting_row("Native language", "Russian", self.choice_control("native_language", ["Russian", "English", "Ukrainian"], "Russian")),
                     self.setting_row("Variety of English", "British", self.choice_control("english_variety", ["British", "American"], "British")),
                     self.setting_row("Enable the keyboard input exercise for words in", "English only", self.choice_control("keyboard_input", ["English only", "Russian only", "Both directions"], "English only")),
                     self.setting_row('Enable the "choose the correct word" exercise for words in', "English only", self.choice_control("choose_correct_word", ["English only", "Russian only", "Both directions"], "English only")),
@@ -1930,18 +1143,18 @@ class MainWindow(QMainWindow):
 
         header = QHBoxLayout()
         title_box = QVBoxLayout()
-        title_box.addWidget(self.title("Выбор категорий"))
-        title_box.addWidget(self.muted("Отмеченные категории используются только для разделов Учёба и Повторение."))
+        title_box.addWidget(self.title("Category choice"))
+        title_box.addWidget(self.muted("Selected categories are used only for Study and Review."))
         self.chosen_categories_label = self.muted("")
         title_box.addWidget(self.chosen_categories_label)
-        start_btn = QPushButton("Начать учёбу")
+        start_btn = QPushButton("Start studying")
         start_btn.setObjectName("primary")
         start_btn.clicked.connect(self.start_studying)
-        clear_btn = QPushButton("Сбросить выбор")
+        clear_btn = QPushButton("Reset selection")
         clear_btn.clicked.connect(self.clear_chosen_categories)
         import_btn = QPushButton("Import backup")
         import_btn.clicked.connect(self.restore_backup)
-        add_btn = QPushButton("Добавить категорию")
+        add_btn = QPushButton("Add category")
         add_btn.setObjectName("primary")
         add_btn.clicked.connect(self.add_category)
         header.addLayout(title_box, 1)
@@ -1967,7 +1180,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(14)
 
         header = QHBoxLayout()
-        add_btn = QPushButton("Добавить категорию")
+        add_btn = QPushButton("Add category")
         add_btn.setObjectName("primary")
         add_btn.clicked.connect(self.add_category)
         header.addStretch(1)
@@ -1995,7 +1208,7 @@ class MainWindow(QMainWindow):
             self.dictionary_category_list.addItem(item)
 
     def add_category(self) -> None:
-        name, accepted = QInputDialog.getText(self, "Добавить категорию", "Название категории:")
+        name, accepted = QInputDialog.getText(self, "Add category", "Category name:")
         if not accepted:
             return
         name = name.strip()
@@ -2003,7 +1216,7 @@ class MainWindow(QMainWindow):
             return
         names = {category["name"] for category in self.category_stats()}
         if name in names:
-            QMessageBox.information(self, "Категория", "Такая категория уже есть.")
+            QMessageBox.information(self, "Category", "This category already exists.")
             return
         self.save_custom_categories(self.custom_categories() + [name])
         self.refresh_category_list()
@@ -2019,7 +1232,15 @@ class MainWindow(QMainWindow):
         self._updating_category_checks = True
         self.category_list.clear()
         chosen = set(self.chosen_categories())
-        for category in self.category_stats():
+        categories = self.category_stats()
+        categories.sort(
+            key=lambda category: (
+                category["name"] not in chosen,
+                -int(category["total"] or 0),
+                str(category["name"]).lower(),
+            )
+        )
+        for category in categories:
             item = QListWidgetItem(
                 f"{category['name']}\n{category['total']} words    {category['percent']}% mastered"
             )
@@ -2657,224 +1878,7 @@ class MainWindow(QMainWindow):
         intro_layout.addWidget(intro_text)
         content_layout.addWidget(intro)
 
-        files = [
-            (
-                "1",
-                "Verb be: singular forms",
-                [
-                    (
-                        "1A",
-                        "I and you",
-                        ["Use I am and you are.", "Negative forms: I am not, you are not.", "Question order: Am I...? Are you...?"],
-                        ["I am Helen.", "You are Tom.", "Are you Mike?"],
-                    ),
-                    (
-                        "1B",
-                        "he, she, it",
-                        ["Use he is, she is, it is.", "Negative contractions: he isn't, she isn't, it isn't.", "Use he for a man, she for a woman, it for a thing."],
-                        ["He is from Italy.", "She isn't from Brazil.", "Is it good?"],
-                    ),
-                ],
-            ),
-            (
-                "2",
-                "Articles and plurals",
-                [
-                    (
-                        "2A",
-                        "a / an and classroom nouns",
-                        ["Use a before consonant sounds.", "Use an before vowel sounds.", "Use singular nouns with a/an."],
-                        ["a book", "an apple", "It is a pen."],
-                    ),
-                    (
-                        "2B",
-                        "Regular plural nouns",
-                        ["Most plurals add -s.", "Add -es after s, sh, ch, x.", "Use these/those for plural things."],
-                        ["two books", "three boxes", "These are chairs."],
-                    ),
-                ],
-            ),
-            (
-                "3",
-                "This / that and possession",
-                [
-                    (
-                        "3A",
-                        "this, that, these, those",
-                        ["Use this/these for near things.", "Use that/those for far things.", "Match singular and plural forms."],
-                        ["This is my phone.", "Those are keys.", "Is that your bag?"],
-                    ),
-                    (
-                        "3B",
-                        "Possessive adjectives",
-                        ["Use my, your, his, her, its, our, their before nouns.", "Possessive adjectives do not change for singular/plural nouns.", "Use his for a man and her for a woman."],
-                        ["This is my sister.", "His car is old.", "Their books are here."],
-                    ),
-                ],
-            ),
-            (
-                "4",
-                "People and family",
-                [
-                    (
-                        "4A",
-                        "Possessive 's",
-                        ["Use 's after a person to show possession.", "For regular plural nouns, add only an apostrophe.", "Use it mostly with people and animals."],
-                        ["Anna's brother is here.", "My parents' house is small.", "Tom's phone is new."],
-                    ),
-                    (
-                        "4B",
-                        "have / has",
-                        ["Use have with I, you, we, they.", "Use has with he, she, it.", "Use don't/doesn't for negatives."],
-                        ["I have two sisters.", "She has a dog.", "They don't have a car."],
-                    ),
-                ],
-            ),
-            (
-                "5",
-                "There is / there are",
-                [
-                    (
-                        "5A",
-                        "there is / there are",
-                        ["Use there is for one thing.", "Use there are for more than one thing.", "Question order: Is there...? Are there...?"],
-                        ["There is a table.", "There are two windows.", "Is there a cafe near here?"],
-                    ),
-                    (
-                        "5B",
-                        "some / any",
-                        ["Use some in positive plural sentences.", "Use any in questions and negatives.", "Use any with plural countable nouns."],
-                        ["There are some books.", "Are there any shops?", "There aren't any chairs."],
-                    ),
-                ],
-            ),
-            (
-                "6",
-                "Present Simple basics",
-                [
-                    (
-                        "6A",
-                        "I / you / we / they",
-                        ["Use the base verb with I, you, we, they.", "Use don't for negatives.", "Use do for questions."],
-                        ["I work in a bank.", "We don't live here.", "Do you speak English?"],
-                    ),
-                    (
-                        "6B",
-                        "he / she / it",
-                        ["Add -s or -es with he, she, it.", "Use doesn't for negatives.", "Use does for questions."],
-                        ["He works at home.", "She doesn't drive.", "Does it cost much?"],
-                    ),
-                ],
-            ),
-            (
-                "7",
-                "Daily routines and frequency",
-                [
-                    (
-                        "7A",
-                        "Adverbs of frequency",
-                        ["Use always, usually, often, sometimes, never.", "Put adverbs before most verbs.", "Put adverbs after be."],
-                        ["I often cook dinner.", "She is always late.", "We never watch TV."],
-                    ),
-                    (
-                        "7B",
-                        "Time expressions",
-                        ["Use in for parts of the day.", "Use at for clock times.", "Use on for days."],
-                        ["I study in the evening.", "He gets up at seven.", "We work on Monday."],
-                    ),
-                ],
-            ),
-            (
-                "8",
-                "Can and object pronouns",
-                [
-                    (
-                        "8A",
-                        "can / can't",
-                        ["Use can for ability and possibility.", "Can is the same for all subjects.", "Use can + base verb."],
-                        ["I can swim.", "She can't drive.", "Can you help me?"],
-                    ),
-                    (
-                        "8B",
-                        "Object pronouns",
-                        ["Use me, you, him, her, it, us, them after verbs.", "Object pronouns replace object nouns.", "Use him for a man and her for a woman."],
-                        ["I know him.", "She helps us.", "Can you call them?"],
-                    ),
-                ],
-            ),
-            (
-                "9",
-                "Present Continuous",
-                [
-                    (
-                        "9A",
-                        "Actions happening now",
-                        ["Form: be + verb-ing.", "Use it for actions happening now.", "Use am/is/are before the -ing form."],
-                        ["I am studying now.", "She is reading.", "They are waiting."],
-                    ),
-                    (
-                        "9B",
-                        "Questions and negatives",
-                        ["Move be before the subject in questions.", "Use not after be for negatives.", "Short answers use be."],
-                        ["Are you listening?", "He isn't sleeping.", "Yes, I am."],
-                    ),
-                ],
-            ),
-            (
-                "10",
-                "Past Simple: be and regular verbs",
-                [
-                    (
-                        "10A",
-                        "was / were",
-                        ["Use was with I, he, she, it.", "Use were with you, we, they.", "Question order: Was/Were + subject."],
-                        ["I was at home.", "They were tired.", "Were you late?"],
-                    ),
-                    (
-                        "10B",
-                        "Regular past verbs",
-                        ["Regular past verbs usually add -ed.", "Use didn't + base verb for negatives.", "Use did + subject + base verb for questions."],
-                        ["We watched a film.", "She didn't call.", "Did you work yesterday?"],
-                    ),
-                ],
-            ),
-            (
-                "11",
-                "Past Simple: irregular verbs",
-                [
-                    (
-                        "11A",
-                        "Common irregular verbs",
-                        ["Irregular past forms do not use -ed.", "Learn them as pairs: go/went, have/had, see/saw.", "The past form is the same for all subjects."],
-                        ["I went to work.", "She had coffee.", "We saw a film."],
-                    ),
-                    (
-                        "11B",
-                        "Past questions",
-                        ["Use did for questions with most past verbs.", "After did, use the base verb.", "Use question words before did."],
-                        ["Did you go out?", "Where did she live?", "What did they buy?"],
-                    ),
-                ],
-            ),
-            (
-                "12",
-                "Future plans",
-                [
-                    (
-                        "12A",
-                        "going to",
-                        ["Use going to for future plans.", "Form: be + going to + base verb.", "Use not after be for negatives."],
-                        ["I am going to study.", "She isn't going to drive.", "We are going to travel."],
-                    ),
-                    (
-                        "12B",
-                        "Future questions",
-                        ["Move be before the subject.", "Use question words before be.", "Short answers use be."],
-                        ["Are you going to work?", "Where are they going to stay?", "Yes, I am."],
-                    ),
-                ],
-            ),
-        ]
+        files = ENGLISH_RULE_FILES
 
         for file_code, file_title, parts in files:
             card = QFrame()
@@ -3039,18 +2043,27 @@ class MainWindow(QMainWindow):
         if word_id:
             self.load_quiz_word(word_id)
         else:
-            message = "No review words found for the chosen categories." if self.study_mode == "review" else "No new words found for the chosen categories."
+            if self.study_mode == "review":
+                message = "No review words are due for the chosen categories."
+            else:
+                message = "No new words left in the chosen categories. Switch to Review or choose another category."
             QMessageBox.information(self, "Study", message)
 
     def load_quiz_word(self, word_id: int) -> None:
         row = services.get_word(word_id)
         if not row:
             return
-        self.current_word_id = word_id
+        self.study_session.start_word(
+            word_id=word_id,
+            word=str(row["word"] or ""),
+            status=str(row["status"] or "new"),
+            mode=self.study_mode,
+        )
+        self.current_word_id = self.study_session.word_id
         self.current_word_row = row
-        self.attempts_left = 3
-        self.current_correct_answer = str(row["word"] or "").strip().lower()
-        self.current_english_word = str(row["word"] or "")
+        self.attempts_left = self.study_session.attempts_left
+        self.current_correct_answer = self.study_session.correct_answer
+        self.current_english_word = self.study_session.english_word
         clean_transcription = str(row["transcription"] or "") if self.setting_value("show_transcription", True) else ""
         status_title = "New" if row["status"] == "new" else "Review"
         if hasattr(self, "study_category_label"):
@@ -3074,7 +2087,8 @@ class MainWindow(QMainWindow):
         self.pronounce_english(self.current_english_word)
 
     def set_learning_preview_state(self) -> None:
-        self.learning_phase = "preview"
+        self.study_session.phase = "preview"
+        self.learning_phase = self.study_session.phase
         row = getattr(self, "current_word_row", None)
         if not row:
             return
@@ -3088,11 +2102,15 @@ class MainWindow(QMainWindow):
         self.hide_current_word_details()
 
     def begin_typing_current_word(self) -> None:
-        self.learning_phase = "typing"
+        self.study_session.begin_typing()
+        self.learning_phase = self.study_session.phase
         row = getattr(self, "current_word_row", None)
         if not row:
             return
-        self.set_study_navigation_enabled(False)
+        if self.study_session.is_new_learning and self.current_word_id:
+            services.mark_learning_selected(int(self.current_word_id))
+            self.model.select()
+        self.set_study_navigation_enabled(not self.study_session.should_lock_navigation())
         self.hide_current_word_details()
         self.quiz_label.setText("Type the English word")
         if hasattr(self, "transcription_label"):
@@ -3191,14 +2209,12 @@ class MainWindow(QMainWindow):
             self.result_label.setText("Type an answer first.")
             self.answer.setFocus()
             return
-        if is_new_learning and raw_answer.lower() != getattr(self, "current_correct_answer", ""):
-            self.attempts_left = max(0, int(getattr(self, "attempts_left", 3)) - 1)
-            if self.attempts_left <= 0:
-                self.result_label.setText(f"Answer: {getattr(self, 'current_correct_answer', '')}. Try again until correct.")
+        if is_new_learning and raw_answer.lower() != self.study_session.correct_answer:
+            message = self.study_session.fail_local_new_attempt()
+            self.attempts_left = self.study_session.attempts_left
+            self.result_label.setText(message)
+            if message.startswith("Answer:"):
                 self.reveal_current_word_details()
-                self.attempts_left = 3
-            else:
-                self.result_label.setText(f"Try again. Attempts left: {self.attempts_left}")
             self.attempts_label.setText(f"Attempts left: {self.attempts_left}")
             if hasattr(self, "word_attempts_value"):
                 self.word_attempts_value.setText(str(self.attempts_left))
@@ -3267,7 +2283,13 @@ class MainWindow(QMainWindow):
 
 def main() -> int:
     database.ensure_database()
+    if sys.platform == "win32":
+        try:
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("MemWord.EnglishLearningDesktop")
+        except Exception:
+            pass
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon(str(APP_ICON)))
     window = MainWindow()
     window.show()
     return app.exec()

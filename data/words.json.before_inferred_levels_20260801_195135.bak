@@ -332,7 +332,7 @@
   {
     "word": "chest",
     "translation": "грудная клетка, грудь",
-    "level": "B1",
+    "level": "A1",
     "category": "Анатомия",
     "status": "new",
     "reword_id": 0,
@@ -937,7 +937,7 @@
   {
     "word": "nail",
     "translation": "ноготь",
-    "level": "B1",
+    "level": "A1",
     "category": "Анатомия",
     "status": "new",
     "reword_id": 0,
@@ -1102,7 +1102,7 @@
   {
     "word": "pupil",
     "translation": "зрачок",
-    "level": "B2",
+    "level": "A1",
     "category": "Анатомия",
     "status": "new",
     "reword_id": 0,
@@ -1234,7 +1234,7 @@
   {
     "word": "temple",
     "translation": "висок",
-    "level": "B2",
+    "level": "A1",
     "category": "Анатомия",
     "status": "new",
     "reword_id": 0,
@@ -1861,7 +1861,7 @@
   {
     "word": "kid",
     "translation": "козленок",
-    "level": "A2",
+    "level": "A1",
     "category": "Животные",
     "status": "new",
     "reword_id": 0,
@@ -2125,7 +2125,7 @@
   {
     "word": "seal",
     "translation": "тюлень",
-    "level": "C1",
+    "level": "A1",
     "category": "Животные",
     "status": "new",
     "reword_id": 0,
@@ -2840,7 +2840,7 @@
   {
     "word": "make-up",
     "translation": "макияж, косметика, грим",
-    "level": "B2",
+    "level": "A1",
     "category": "Внешность",
     "status": "new",
     "reword_id": 0,
@@ -3907,7 +3907,7 @@
   {
     "word": "pick",
     "translation": "кирка",
-    "level": "B2",
+    "level": "A1",
     "category": "Археология",
     "status": "mastered",
     "reword_id": 0,
@@ -5172,7 +5172,7 @@
   {
     "word": "arrangement",
     "translation": "расположение, размещение, композиция",
-    "level": "A2",
+    "level": "A1",
     "category": "Искусство",
     "status": "mastered",
     "reword_id": 0,
@@ -6140,7 +6140,7 @@
   {
     "word": "to execute",
     "translation": "выполнять, исполнять",
-    "level": "C1",
+    "level": "A1",
     "category": "Искусство",
     "status": "new",
     "reword_id": 0,
@@ -6151,7 +6151,7 @@
   {
     "word": "execution",
     "translation": "выполнение, исполнение",
-    "level": "C1",
+    "level": "A1",
     "category": "Искусство",
     "status": "new",
     "reword_id": 0,
@@ -6811,7 +6811,7 @@
   {
     "word": "light",
     "translation": "свет",
-    "level": "A2",
+    "level": "A1",
     "category": "Искусство",
     "status": "review",
     "reword_id": 0,
@@ -7020,7 +7020,7 @@
   {
     "word": "moving",
     "translation": "трогательный",
-    "level": "B2",
+    "level": "A1",
     "category": "Искусство",
     "status": "new",
     "reword_id": 0,
@@ -7119,7 +7119,7 @@
   {
     "word": "outstanding",
     "translation": "выдающийся, потрясающий",
-    "level": "B2",
+    "level": "A1",
     "category": "Искусство",
     "status": "new",
     "reword_id": 0,
@@ -7603,7 +7603,7 @@
   {
     "word": "to render",
     "translation": "воспроизводить, изображать, передавать, символизировать",
-    "level": "C1",
+    "level": "A1",
     "category": "Искусство",
     "status": "new",
     "reword_id": 0,
@@ -8010,7 +8010,7 @@
   {
     "word": "stroke",
     "translation": "штрих, мазок, черта",
-    "level": "B2",
+    "level": "A1",
     "category": "Искусство",
     "status": "mastered",
     "reword_id": 0,
@@ -8043,7 +8043,7 @@
   {
     "word": "subject",
     "translation": "тема, вопрос, предмет",
-    "level": "B2",
+    "level": "A1",
     "category": "Искусство",
     "status": "review",
     "reword_id": 0,
@@ -8164,7 +8164,7 @@
   {
     "word": "touch",
     "translation": "штрих, черта, мазок",
-    "level": "B1",
+    "level": "A1",
     "category": "Искусство",
     "status": "new",
     "reword_id": 0,
@@ -9121,7 +9121,7 @@
   {
     "word": "to charge",
     "translation": "заряжать",
-    "level": "B1",
+    "level": "A1",
     "category": "Базовые глаголы",
     "status": "new",
     "reword_id": 0,
@@ -14698,7 +14698,7 @@
   {
     "word": "bank",
     "translation": "банк, банковский",
-    "level": "B1",
+    "level": "A1",
     "category": "Бизнес",
     "status": "review",
     "reword_id": 0,
@@ -15083,7 +15083,7 @@
   {
     "word": "carriage",
     "translation": "перевозка, доставка",
-    "level": "C1",
+    "level": "A1",
     "category": "Бизнес",
     "status": "new",
     "reword_id": 0,
@@ -15171,7 +15171,7 @@
   {
     "word": "charge",
     "translation": "плата, взнос, комиссия",
-    "level": "B1",
+    "level": "A1",
     "category": "Бизнес",
     "status": "new",
     "reword_id": 0,
@@ -15182,7 +15182,7 @@
   {
     "word": "check",
     "translation": "чек",
-    "level": "A2",
+    "level": "A1",
     "category": "Бизнес",
     "status": "new",
     "reword_id": 0,
@@ -15292,7 +15292,7 @@
   {
     "word": "close",
     "translation": "подписание сделки",
-    "level": "B1",
+    "level": "A1",
     "category": "Бизнес",
     "status": "new",
     "reword_id": 0,
@@ -16150,7 +16150,7 @@
   {
     "word": "to fire",
     "translation": "увольнять",
-    "level": "B1",
+    "level": "A1",
     "category": "Бизнес",
     "status": "mastered",
     "reword_id": 0,
@@ -17019,7 +17019,7 @@
   {
     "word": "matter",
     "translation": "вопрос, проблема",
-    "level": "A2",
+    "level": "A1",
     "category": "Бизнес",
     "status": "review",
     "reword_id": 0,
@@ -17239,7 +17239,7 @@
   {
     "word": "outlet",
     "translation": "фирменный магазин, специализированный магазин",
-    "level": "C1",
+    "level": "A1",
     "category": "Бизнес",
     "status": "new",
     "reword_id": 0,
@@ -17954,7 +17954,7 @@
   {
     "word": "to settle",
     "translation": "решать, регулировать, улаживать",
-    "level": "B2",
+    "level": "A1",
     "category": "Бизнес",
     "status": "mastered",
     "reword_id": 0,
@@ -18768,7 +18768,7 @@
   {
     "word": "application",
     "translation": "заявление, заявка",
-    "level": "B2",
+    "level": "A1",
     "category": "Карьера",
     "status": "mastered",
     "reword_id": 0,
@@ -19263,7 +19263,7 @@
   {
     "word": "deputy",
     "translation": "заместитель",
-    "level": "C1",
+    "level": "A1",
     "category": "Карьера",
     "status": "new",
     "reword_id": 0,
@@ -19285,7 +19285,7 @@
   {
     "word": "to discharge",
     "translation": "увольнять",
-    "level": "C1",
+    "level": "A1",
     "category": "Карьера",
     "status": "new",
     "reword_id": 0,
@@ -20429,7 +20429,7 @@
   {
     "word": "vice",
     "translation": "заместитель",
-    "level": "C1",
+    "level": "A1",
     "category": "Карьера",
     "status": "new",
     "reword_id": 0,
@@ -21287,7 +21287,7 @@
   {
     "word": "fair",
     "translation": "справедливый, честный",
-    "level": "A2",
+    "level": "A1",
     "category": "Характер",
     "status": "mastered",
     "reword_id": 0,
@@ -24906,7 +24906,7 @@
   {
     "word": "copper",
     "translation": "медный",
-    "level": "C1",
+    "level": "A1",
     "category": "Цвета",
     "status": "review",
     "reword_id": 0,
@@ -25049,7 +25049,7 @@
   {
     "word": "light",
     "translation": "светлый",
-    "level": "A2",
+    "level": "A1",
     "category": "Цвета",
     "status": "review",
     "reword_id": 0,
@@ -25368,7 +25368,7 @@
   {
     "word": "to crack",
     "translation": "взломать",
-    "level": "B2",
+    "level": "A1",
     "category": "Компьютер",
     "status": "new",
     "reword_id": 0,
@@ -25742,7 +25742,7 @@
   {
     "word": "net",
     "translation": "сеть, сетка",
-    "level": "C1",
+    "level": "A1",
     "category": "Компьютер",
     "status": "review",
     "reword_id": 0,
@@ -26226,7 +26226,7 @@
   {
     "word": "assembly",
     "translation": "сборка, монтаж",
-    "level": "C1",
+    "level": "A1",
     "category": "Строительство",
     "status": "new",
     "reword_id": 0,
@@ -26303,7 +26303,7 @@
   {
     "word": "bar",
     "translation": "перекладина, стержень, стойка, полоса, брусок",
-    "level": "A2",
+    "level": "A1",
     "category": "Строительство",
     "status": "mastered",
     "reword_id": 0,
@@ -26325,7 +26325,7 @@
   {
     "word": "beam",
     "translation": "балка, брус",
-    "level": "C1",
+    "level": "A1",
     "category": "Строительство",
     "status": "new",
     "reword_id": 0,
@@ -26589,7 +26589,7 @@
   {
     "word": "concrete",
     "translation": "бетон",
-    "level": "B2",
+    "level": "A1",
     "category": "Строительство",
     "status": "new",
     "reword_id": 0,
@@ -27491,7 +27491,7 @@
   {
     "word": "level",
     "translation": "уровень, этаж",
-    "level": "B1",
+    "level": "A1",
     "category": "Строительство",
     "status": "review",
     "reword_id": 0,
@@ -28569,7 +28569,7 @@
   {
     "word": "tear",
     "translation": "разрыв, дыра",
-    "level": "B2",
+    "level": "A1",
     "category": "Строительство",
     "status": "new",
     "reword_id": 0,
@@ -29196,7 +29196,7 @@
   {
     "word": "element",
     "translation": "стихия",
-    "level": "B1",
+    "level": "A1",
     "category": "Экология",
     "status": "new",
     "reword_id": 0,
@@ -29251,7 +29251,7 @@
   {
     "word": "environmental",
     "translation": "относящийся к окружающей среде, экологический",
-    "level": "B1",
+    "level": "A1",
     "category": "Экология",
     "status": "new",
     "reword_id": 0,
@@ -30043,7 +30043,7 @@
   {
     "word": "relief",
     "translation": "рельеф",
-    "level": "B2",
+    "level": "A1",
     "category": "Экология",
     "status": "new",
     "reword_id": 0,
@@ -32023,7 +32023,7 @@
   {
     "word": "engaged",
     "translation": "помолвленный, обрученный",
-    "level": "B2",
+    "level": "A1",
     "category": "Семья",
     "status": "new",
     "reword_id": 0,
@@ -32595,7 +32595,7 @@
   {
     "word": "relative",
     "translation": "родственник",
-    "level": "B1",
+    "level": "A1",
     "category": "Семья",
     "status": "new",
     "reword_id": 0,
@@ -32639,7 +32639,7 @@
   {
     "word": "single",
     "translation": "единственный, одинокий, одиночный, холостой, неженатый, незамужняя",
-    "level": "A2",
+    "level": "A1",
     "category": "Семья",
     "status": "review",
     "reword_id": 0,
@@ -35136,7 +35136,7 @@
   {
     "word": "oil",
     "translation": "масло",
-    "level": "A2",
+    "level": "A1",
     "category": "Еда",
     "status": "review",
     "reword_id": 0,
@@ -36973,7 +36973,7 @@
   {
     "word": "counter",
     "translation": "прилавок, стойка, кухонный рабочий стол",
-    "level": "B2",
+    "level": "A1",
     "category": "Мебель",
     "status": "new",
     "reword_id": 0,
@@ -37457,7 +37457,7 @@
   {
     "word": "current",
     "translation": "течение, ток",
-    "level": "B1",
+    "level": "A1",
     "category": "География",
     "status": "review",
     "reword_id": 0,
@@ -38931,7 +38931,7 @@
   {
     "word": "disabled",
     "translation": "нетрудоспособный, неработоспособный",
-    "level": "B2",
+    "level": "A1",
     "category": "Здоровье",
     "status": "new",
     "reword_id": 0,
@@ -40977,7 +40977,7 @@
   {
     "word": "stroke",
     "translation": "инсульт",
-    "level": "B2",
+    "level": "A1",
     "category": "Здоровье",
     "status": "new",
     "reword_id": 0,
@@ -41087,7 +41087,7 @@
   {
     "word": "tablet",
     "translation": "таблетка",
-    "level": "A2",
+    "level": "A1",
     "category": "Здоровье",
     "status": "new",
     "reword_id": 0,
@@ -43144,7 +43144,7 @@
   {
     "word": "clip",
     "translation": "скрепка, зажим, клипс",
-    "level": "B2",
+    "level": "A1",
     "category": "Дом, вещи",
     "status": "new",
     "reword_id": 0,
@@ -43782,7 +43782,7 @@
   {
     "word": "fan",
     "translation": "вентилятор",
-    "level": "A2",
+    "level": "A1",
     "category": "Дом, вещи",
     "status": "new",
     "reword_id": 0,
@@ -44145,7 +44145,7 @@
   {
     "word": "iron",
     "translation": "утюг",
-    "level": "B1",
+    "level": "A1",
     "category": "Дом, вещи",
     "status": "new",
     "reword_id": 0,
@@ -44629,7 +44629,7 @@
   {
     "word": "outlet",
     "translation": "разъем, розетка",
-    "level": "C1",
+    "level": "A1",
     "category": "Дом, вещи",
     "status": "new",
     "reword_id": 0,
@@ -54100,7 +54100,7 @@
   {
     "word": "bench",
     "translation": "состав суда",
-    "level": "C1",
+    "level": "A1",
     "category": "Юриспруденция",
     "status": "new",
     "reword_id": 0,
@@ -54199,7 +54199,7 @@
   {
     "word": "brief",
     "translation": "краткое изложение дела",
-    "level": "B2",
+    "level": "A1",
     "category": "Юриспруденция",
     "status": "new",
     "reword_id": 0,
@@ -54265,7 +54265,7 @@
   {
     "word": "case",
     "translation": "случай, дело",
-    "level": "A2",
+    "level": "A1",
     "category": "Юриспруденция",
     "status": "review",
     "reword_id": 0,
@@ -54287,7 +54287,7 @@
   {
     "word": "charge",
     "translation": "ответственность, обвинение",
-    "level": "B1",
+    "level": "A1",
     "category": "Юриспруденция",
     "status": "new",
     "reword_id": 0,
@@ -54298,7 +54298,7 @@
   {
     "word": "to charge",
     "translation": "обвинять",
-    "level": "B1",
+    "level": "A1",
     "category": "Юриспруденция",
     "status": "new",
     "reword_id": 0,
@@ -54705,7 +54705,7 @@
   {
     "word": "court",
     "translation": "суд, судебный",
-    "level": "B1",
+    "level": "A1",
     "category": "Юриспруденция",
     "status": "mastered",
     "reword_id": 0,
@@ -55970,7 +55970,7 @@
   {
     "word": "legislation",
     "translation": "законодательство, закон",
-    "level": "C1",
+    "level": "A1",
     "category": "Юриспруденция",
     "status": "new",
     "reword_id": 0,
@@ -56487,7 +56487,7 @@
   {
     "word": "press",
     "translation": "пресса, печать, корреспондентский",
-    "level": "B1",
+    "level": "A1",
     "category": "Юриспруденция",
     "status": "review",
     "reword_id": 0,
@@ -57774,7 +57774,7 @@
   {
     "word": "novel",
     "translation": "роман, новелла, маленький рассказ",
-    "level": "C1",
+    "level": "A1",
     "category": "Литература",
     "status": "review",
     "reword_id": 0,
@@ -57818,7 +57818,7 @@
   {
     "word": "passage",
     "translation": "отрывок (текста)",
-    "level": "B2",
+    "level": "A1",
     "category": "Литература",
     "status": "new",
     "reword_id": 0,
@@ -58104,7 +58104,7 @@
   {
     "word": "volume",
     "translation": "том, книга",
-    "level": "B2",
+    "level": "A1",
     "category": "Литература",
     "status": "new",
     "reword_id": 0,
@@ -58401,7 +58401,7 @@
   {
     "word": "excess",
     "translation": "избыток, излишек, превышение",
-    "level": "C1",
+    "level": "A1",
     "category": "Маркетинг",
     "status": "new",
     "reword_id": 0,
@@ -59017,7 +59017,7 @@
   {
     "word": "circulation",
     "translation": "тираж",
-    "level": "C1",
+    "level": "A1",
     "category": "СМИ",
     "status": "new",
     "reword_id": 0,
@@ -59116,7 +59116,7 @@
   {
     "word": "editorial",
     "translation": "передовица, передовая статья",
-    "level": "B2",
+    "level": "A1",
     "category": "СМИ",
     "status": "new",
     "reword_id": 0,
@@ -59380,7 +59380,7 @@
   {
     "word": "average",
     "translation": "среднее арифметическое",
-    "level": "A2",
+    "level": "A1",
     "category": "Математика",
     "status": "new",
     "reword_id": 0,
@@ -60128,7 +60128,7 @@
   {
     "word": "proof",
     "translation": "доказательство",
-    "level": "B2",
+    "level": "A1",
     "category": "Математика",
     "status": "new",
     "reword_id": 0,
@@ -60392,7 +60392,7 @@
   {
     "word": "volume",
     "translation": "объём, ёмкость, вместимость, количество",
-    "level": "B2",
+    "level": "A1",
     "category": "Математика",
     "status": "new",
     "reword_id": 0,
@@ -60700,7 +60700,7 @@
   {
     "word": "bow",
     "translation": "лук",
-    "level": "C1",
+    "level": "A1",
     "category": "Военное дело, оружие",
     "status": "new",
     "reword_id": 0,
@@ -61261,7 +61261,7 @@
   {
     "word": "mine",
     "translation": "мина",
-    "level": "A2",
+    "level": "A1",
     "category": "Военное дело, оружие",
     "status": "new",
     "reword_id": 0,
@@ -61602,7 +61602,7 @@
   {
     "word": "tank",
     "translation": "танк",
-    "level": "B2",
+    "level": "A1",
     "category": "Военное дело, оружие",
     "status": "new",
     "reword_id": 0,
@@ -61844,7 +61844,7 @@
   {
     "word": "grand",
     "translation": "тысяча долларов",
-    "level": "B2",
+    "level": "A1",
     "category": "Деньги",
     "status": "new",
     "reword_id": 0,
@@ -61987,7 +61987,7 @@
   {
     "word": "to speculate",
     "translation": "спекулировать",
-    "level": "B2",
+    "level": "A1",
     "category": "Деньги",
     "status": "new",
     "reword_id": 0,
@@ -62009,7 +62009,7 @@
   {
     "word": "tip",
     "translation": "чаевые",
-    "level": "A2",
+    "level": "A1",
     "category": "Деньги",
     "status": "mastered",
     "reword_id": 0,
@@ -62174,7 +62174,7 @@
   {
     "word": "cast",
     "translation": "актерский состав",
-    "level": "B2",
+    "level": "A1",
     "category": "Кино",
     "status": "mastered",
     "reword_id": 0,
@@ -62900,7 +62900,7 @@
   {
     "word": "bow",
     "translation": "смычок",
-    "level": "C1",
+    "level": "A1",
     "category": "Музыка",
     "status": "new",
     "reword_id": 0,
@@ -63318,7 +63318,7 @@
   {
     "word": "organ",
     "translation": "орган (инструмент)",
-    "level": "B2",
+    "level": "A1",
     "category": "Музыка",
     "status": "new",
     "reword_id": 0,
@@ -63384,7 +63384,7 @@
   {
     "word": "single",
     "translation": "сингл (альбом из одной песни)",
-    "level": "A2",
+    "level": "A1",
     "category": "Музыка",
     "status": "new",
     "reword_id": 0,
@@ -107813,7 +107813,7 @@
   {
     "word": "withdrawal",
     "translation": "уход в себя, замыкание в себе",
-    "level": "C1",
+    "level": "A1",
     "category": "Психология",
     "status": "new",
     "reword_id": 0,
@@ -109430,7 +109430,7 @@
   {
     "word": "might",
     "translation": "мощь, сила, могущество, энергия",
-    "level": "A2",
+    "level": "A1",
     "category": "NGSL 101-1000",
     "status": "mastered",
     "reword_id": 0,
@@ -109452,7 +109452,7 @@
   {
     "word": "lead",
     "translation": "свинец",
-    "level": "B1",
+    "level": "A1",
     "category": "NGSL 101-1000",
     "status": "new",
     "reword_id": 0,
@@ -109507,7 +109507,7 @@
   {
     "word": "to date",
     "translation": "датировать",
-    "level": "B2",
+    "level": "A1",
     "category": "NGSL 101-1000",
     "status": "new",
     "reword_id": 0,
@@ -109573,7 +109573,7 @@
   {
     "word": "check",
     "translation": "шах",
-    "level": "A2",
+    "level": "A1",
     "category": "NGSL 101-1000",
     "status": "review",
     "reword_id": 0,
@@ -109617,7 +109617,7 @@
   {
     "word": "private",
     "translation": "рядовой солдат",
-    "level": "B1",
+    "level": "A1",
     "category": "NGSL 101-1000",
     "status": "new",
     "reword_id": 0,
@@ -109727,7 +109727,7 @@
   {
     "word": "wind",
     "translation": "вращение, виток, оборот",
-    "level": "A2",
+    "level": "A1",
     "category": "NGSL 1001-3000",
     "status": "new",
     "reword_id": 0,
@@ -109760,7 +109760,7 @@
   {
     "word": "overall",
     "translation": "комбинезон, спецодежда",
-    "level": "B2",
+    "level": "A1",
     "category": "NGSL 1001-3000",
     "status": "new",
     "reword_id": 0,
@@ -110024,7 +110024,7 @@
   {
     "word": "stable",
     "translation": "конюшня",
-    "level": "B2",
+    "level": "A1",
     "category": "NGSL 1001-3000",
     "status": "new",
     "reword_id": 0,
@@ -110244,7 +110244,7 @@
   {
     "word": "log",
     "translation": "бревно",
-    "level": "C1",
+    "level": "A1",
     "category": "NGSL 1001-3000",
     "status": "new",
     "reword_id": 0,
@@ -110420,7 +110420,7 @@
   {
     "word": "custom",
     "translation": "заказной, сделанный на заказ",
-    "level": "B1",
+    "level": "A1",
     "category": "NGSL 1001-3000",
     "status": "new",
     "reword_id": 0,
@@ -110585,7 +110585,7 @@
   {
     "word": "craft",
     "translation": "ремесло, искусство, мастерить",
-    "level": "B2",
+    "level": "A1",
     "category": "NGSL 1001-3000",
     "status": "new",
     "reword_id": 0,
@@ -113665,7 +113665,7 @@
   {
     "word": "ruin",
     "translation": "руины, развалины",
-    "level": "B2",
+    "level": "A1",
     "category": "Путешествия",
     "status": "new",
     "reword_id": 0,
@@ -114193,7 +114193,7 @@
   {
     "word": "subway",
     "translation": "метро, метрополитен",
-    "level": "A2",
+    "level": "A1",
     "category": "1_Words",
     "status": "review",
     "reword_id": 0,
@@ -114479,7 +114479,7 @@
   {
     "word": "unit",
     "translation": "блок, единица, элемент",
-    "level": "A2",
+    "level": "A1",
     "category": "1_Words",
     "status": "review",
     "reword_id": 0,
@@ -114644,7 +114644,7 @@
   {
     "word": "humor",
     "translation": "юмор",
-    "level": "B2",
+    "level": "A1",
     "category": "1_Words",
     "status": "review",
     "reword_id": 0,
@@ -114996,7 +114996,7 @@
   {
     "word": "motorcycle",
     "translation": "мотоцикл",
-    "level": "A2",
+    "level": "A1",
     "category": "1_Words",
     "status": "review",
     "reword_id": 0,
@@ -115095,7 +115095,7 @@
   {
     "word": "major",
     "translation": "специальность,  профилирующая дисциплина, главный, майор, большинство, мажор, основной, крупный, мажорный",
-    "level": "A2",
+    "level": "A1",
     "category": "2_Words",
     "status": "review",
     "reword_id": 0,
@@ -116272,7 +116272,7 @@
   {
     "word": "burn",
     "translation": "гореть, сжечь кого-л./что-л., ожог",
-    "level": "B2",
+    "level": "A1",
     "category": "1_Words",
     "status": "review",
     "reword_id": 0,
@@ -116404,7 +116404,7 @@
   {
     "word": "copy",
     "translation": "копия, копировальный",
-    "level": "A2",
+    "level": "A1",
     "category": "1_Words",
     "status": "review",
     "reword_id": 0,
@@ -116481,7 +116481,7 @@
   {
     "word": "download",
     "translation": "загрузка, скачивание",
-    "level": "A2",
+    "level": "A1",
     "category": "1_Words",
     "status": "review",
     "reword_id": 0,
@@ -116503,7 +116503,7 @@
   {
     "word": "drop",
     "translation": "сбрасывание, бросать что-л.",
-    "level": "B1",
+    "level": "A1",
     "category": "1_Words",
     "status": "review",
     "reword_id": 0,
@@ -116547,7 +116547,7 @@
   {
     "word": "fear",
     "translation": "боязнь, страх",
-    "level": "A2",
+    "level": "A1",
     "category": "1_Words",
     "status": "review",
     "reword_id": 0,
@@ -116558,7 +116558,7 @@
   {
     "word": "feed",
     "translation": "кормить кого-л., питать кого-л./что-л.",
-    "level": "B2",
+    "level": "A1",
     "category": "1_Words",
     "status": "mastered",
     "reword_id": 0,
@@ -116591,7 +116591,7 @@
   {
     "word": "fly",
     "translation": "летать",
-    "level": "A2",
+    "level": "A1",
     "category": "1_Words",
     "status": "review",
     "reword_id": 0,
@@ -116690,7 +116690,7 @@
   {
     "word": "go",
     "translation": "идти, ехать, ходить",
-    "level": "B1",
+    "level": "A1",
     "category": "1_Words",
     "status": "review",
     "reword_id": 0,
@@ -116734,7 +116734,7 @@
   {
     "word": "hurt",
     "translation": "боль, травма, рана, обида, телесное повреждение",
-    "level": "B2",
+    "level": "A1",
     "category": "1_Words",
     "status": "mastered",
     "reword_id": 0,
@@ -116877,7 +116877,7 @@
   {
     "word": "make",
     "translation": "создавать кого-л./что-л., изготовление, изготовлять что-л., творить что-л.",
-    "level": "B2",
+    "level": "A1",
     "category": "1_Words",
     "status": "review",
     "reword_id": 0,
@@ -117064,7 +117064,7 @@
   {
     "word": "say",
     "translation": "сказать, говорить",
-    "level": "C1",
+    "level": "A1",
     "category": "1_Words",
     "status": "review",
     "reword_id": 0,
@@ -117108,7 +117108,7 @@
   {
     "word": "sense",
     "translation": "ощущение, значение, чувство",
-    "level": "A2",
+    "level": "A1",
     "category": "1_Words",
     "status": "mastered",
     "reword_id": 0,
@@ -117163,7 +117163,7 @@
   {
     "word": "spell",
     "translation": "писать по буквам",
-    "level": "C1",
+    "level": "A1",
     "category": "1_Words",
     "status": "review",
     "reword_id": 0,
@@ -117185,7 +117185,7 @@
   {
     "word": "store",
     "translation": "склад, хранение, магазин",
-    "level": "A2",
+    "level": "A1",
     "category": "1_Words",
     "status": "mastered",
     "reword_id": 0,
@@ -117284,7 +117284,7 @@
   {
     "word": "track",
     "translation": "путь, след, трасса, маршрут, трек",
-    "level": "A2",
+    "level": "A1",
     "category": "1_Words",
     "status": "mastered",
     "reword_id": 0,
@@ -118065,7 +118065,7 @@
   {
     "word": "custom",
     "translation": "индивидуальный, собственный",
-    "level": "B1",
+    "level": "A1",
     "category": "1_Words",
     "status": "mastered",
     "reword_id": 0,

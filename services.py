@@ -1,9 +1,10 @@
 import json
+import random
 import time
 from datetime import date, timedelta
 
-from db import APP_DB, connect_sqlite
 from models import AnswerResult
+from repositories import word_repository as words
 
 
 EVENT_TYPES = {"new_learned", "reviewed", "known", "mastered"}
@@ -39,22 +40,10 @@ def end_of_today_ms() -> int:
 
 
 def review_due_count(categories: list[str] | None = None, cutoff_ms: int | None = None) -> int:
-    con = connect_sqlite(APP_DB)
-    params: list[str] = []
-    filters = ["status='review'"]
-    category_filter, category_params = category_filter_sql(categories or [])
-    if category_filter:
-        filters.append(category_filter)
-        params.extend(category_params)
-    rows = con.execute(
-        f"SELECT last_repeat_time, good_series FROM words WHERE {' AND '.join(filters)}",
-        params,
-    ).fetchall()
-    con.close()
     cutoff = int(cutoff_ms if cutoff_ms is not None else time.time() * 1000)
     return sum(
         1
-        for row in rows
+        for row in words.review_candidates(categories or [])
         if next_review_time_ms(int(row["last_repeat_time"] or 0), int(row["good_series"] or 0)) <= cutoff
     )
 
@@ -84,110 +73,48 @@ def good_series_from_status(status: str) -> int:
 
 
 def category_filter_sql(categories: list[str]) -> tuple[str, list[str]]:
-    if not categories:
-        return "", []
-    return f"category IN ({','.join('?' for _ in categories)})", categories
+    return words.category_filter_sql(categories)
 
 
 def dashboard_stats(categories: list[str] | None = None) -> dict:
-    con = connect_sqlite(APP_DB)
-    params: list[str] = []
-    filters: list[str] = []
-    category_filter, category_params = category_filter_sql(categories or [])
-    if category_filter:
-        filters.append(category_filter)
-        params.extend(category_params)
-    where = f" WHERE {' AND '.join(filters)}" if filters else ""
-    total = con.execute(f"SELECT COUNT(*) FROM words{where}", params).fetchone()[0]
-    due = con.execute(f"SELECT COUNT(*) FROM words{where + ' AND' if where else ' WHERE'} status IN ('new', 'review')", params).fetchone()[0]
-    mastered = con.execute(f"SELECT COUNT(*) FROM words{where + ' AND' if where else ' WHERE'} status IN ('mastered', 'known')", params).fetchone()[0]
-    review = con.execute(f"SELECT COUNT(*) FROM words{where + ' AND' if where else ' WHERE'} status='review'", params).fetchone()[0]
-    new = con.execute(f"SELECT COUNT(*) FROM words{where + ' AND' if where else ' WHERE'} status='new'", params).fetchone()[0]
-    hard = con.execute(f"SELECT COUNT(*) FROM words{where + ' AND' if where else ' WHERE'} good_series=0 AND total_answers>0", params).fetchone()[0]
-    con.close()
-    due_today = review_due_today_count(categories or [])
-    due_now = review_due_now_count(categories or [])
-    return {
-        "total": total,
-        "due": due,
-        "due_today": due_today,
-        "due_now": due_now,
-        "mastered": mastered,
-        "review": review,
-        "new": new,
-        "hard": hard,
-    }
-
-
-def study_status_filter(mode: str) -> str:
-    return "status='review'" if mode == "review" else "status='new'"
+    result = words.dashboard_counts(categories or [])
+    result["due_today"] = review_due_today_count(categories or [])
+    result["due_now"] = review_due_now_count(categories or [])
+    return result
 
 
 def find_random_word_id(mode: str, categories: list[str]) -> int | None:
-    con = connect_sqlite(APP_DB)
-    params: list[str] = []
-    filters = [study_status_filter(mode)]
-    category_filter, category_params = category_filter_sql(categories)
-    if category_filter:
-        filters.append(category_filter)
-        params.extend(category_params)
-    if mode == "review":
-        rows = con.execute(
-            f"SELECT id, last_repeat_time, good_series FROM words WHERE {' AND '.join(filters)}",
-            params,
-        ).fetchall()
-        con.close()
-        now_ms = int(time.time() * 1000)
-        due_ids = [
-            int(row["id"])
-            for row in rows
-            if next_review_time_ms(int(row["last_repeat_time"] or 0), int(row["good_series"] or 0)) <= now_ms
-        ]
-        if not due_ids:
-            return None
-        import random
-
-        return random.choice(due_ids)
-    row = con.execute(
-        f"SELECT id FROM words WHERE {' AND '.join(filters)} ORDER BY RANDOM() LIMIT 1",
-        params,
-    ).fetchone()
-    con.close()
-    return int(row["id"]) if row else None
+    if mode != "review":
+        return words.random_new_word_id(categories)
+    now_ms = int(time.time() * 1000)
+    due_ids = [
+        int(row["id"])
+        for row in words.review_candidates(categories)
+        if next_review_time_ms(int(row["last_repeat_time"] or 0), int(row["good_series"] or 0)) <= now_ms
+    ]
+    return random.choice(due_ids) if due_ids else None
 
 
 def get_word(word_id: int):
-    con = connect_sqlite(APP_DB)
-    row = con.execute("SELECT * FROM words WHERE id=?", (word_id,)).fetchone()
-    con.close()
-    return row
+    return words.get_word(word_id)
+
+
+def mark_learning_selected(word_id: int) -> None:
+    words.mark_learning_selected(word_id)
 
 
 def mark_known(word_id: int) -> None:
-    con = connect_sqlite(APP_DB)
-    con.execute(
-        """
-        UPDATE words
-        SET total_answers=total_answers+1, good_series=?, last_repeat_time=?, status='known'
-        WHERE id=?
-        """,
-        (reword_learned_series(), int(time.time() * 1000), word_id),
-    )
-    con.commit()
-    con.close()
+    words.mark_known(word_id, reword_learned_series(), int(time.time() * 1000))
     record_study_event(word_id, "known")
 
 
 def check_answer(word_id: int, answer: str, correct_answer: str, attempts_left: int) -> AnswerResult:
-    con = connect_sqlite(APP_DB)
-    row = con.execute("SELECT * FROM words WHERE id=?", (word_id,)).fetchone()
+    row = words.get_word(word_id)
     if not row:
-        con.close()
         return AnswerResult(False, attempts_left, "Word not found.", "new", 0)
 
     normalized_answer = answer.strip().lower()
     if not normalized_answer:
-        con.close()
         return AnswerResult(False, attempts_left, "Type an answer first.", row["status"] or "new", int(row["good_series"] or 0))
 
     normalized_correct = correct_answer.strip().lower()
@@ -212,22 +139,12 @@ def check_answer(word_id: int, answer: str, correct_answer: str, attempts_left: 
     else:
         attempts_left = max(0, attempts_left - 1)
         if attempts_left > 0:
-            con.close()
             return AnswerResult(False, attempts_left, f"Try again. Attempts left: {attempts_left}", previous_status, int(row["good_series"] or 0))
         good_series = 0
         status = "review"
         message = f"Answer: {correct_answer}"
 
-    con.execute(
-        """
-        UPDATE words
-        SET total_answers=total_answers+1, good_series=?, last_repeat_time=?, status=?
-        WHERE id=?
-        """,
-        (good_series, now_ms, status, word_id),
-    )
-    con.commit()
-    con.close()
+    words.update_answer_result(word_id, good_series, now_ms, status)
 
     if event_type:
         record_study_event(word_id, event_type)
@@ -247,25 +164,17 @@ def check_answer(word_id: int, answer: str, correct_answer: str, attempts_left: 
 
 
 def daily_goal_value(default: int = 10) -> int:
-    con = connect_sqlite(APP_DB)
-    row = con.execute("SELECT value FROM progress WHERE name='daily_goal'").fetchone()
-    con.close()
-    if not row:
+    value = words.get_progress("daily_goal")
+    if value is None:
         return default
     try:
-        return max(1, int(json.loads(row["value"])))
+        return max(1, int(json.loads(value)))
     except (TypeError, ValueError, json.JSONDecodeError):
         return default
 
 
 def set_daily_goal(value: int) -> None:
-    con = connect_sqlite(APP_DB)
-    con.execute(
-        "INSERT OR REPLACE INTO progress(name, value) VALUES ('daily_goal', ?)",
-        (json.dumps(int(value)),),
-    )
-    con.commit()
-    con.close()
+    words.set_progress("daily_goal", int(value))
 
 
 def daily_learned_key(day: date | None = None) -> str:
@@ -273,13 +182,11 @@ def daily_learned_key(day: date | None = None) -> str:
 
 
 def learned_new_words_today() -> int:
-    con = connect_sqlite(APP_DB)
-    row = con.execute("SELECT value FROM progress WHERE name=?", (daily_learned_key(),)).fetchone()
-    con.close()
-    if not row:
+    value = words.get_progress(daily_learned_key())
+    if value is None:
         return 0
     try:
-        return max(0, int(json.loads(row["value"])))
+        return max(0, int(json.loads(value)))
     except (TypeError, ValueError, json.JSONDecodeError):
         return 0
 
@@ -287,28 +194,13 @@ def learned_new_words_today() -> int:
 def increment_daily_learned() -> None:
     goal = daily_goal_value()
     learned = min(learned_new_words_today() + 1, goal)
-    con = connect_sqlite(APP_DB)
-    con.execute(
-        "INSERT OR REPLACE INTO progress(name, value) VALUES (?, ?)",
-        (daily_learned_key(), json.dumps(learned)),
-    )
-    con.commit()
-    con.close()
+    words.set_progress(daily_learned_key(), learned)
 
 
 def record_study_event(word_id: int | None, event_type: str) -> None:
     if event_type not in EVENT_TYPES:
         return
-    con = connect_sqlite(APP_DB)
-    con.execute(
-        """
-        INSERT INTO study_events(word_id, event_type, event_date, event_time)
-        VALUES (?, ?, ?, ?)
-        """,
-        (int(word_id or 0), event_type, date.today().isoformat(), int(time.time() * 1000)),
-    )
-    con.commit()
-    con.close()
+    words.record_event(word_id, event_type, date.today(), int(time.time() * 1000))
 
 
 def stats_period_days(period: str) -> list[str]:
@@ -320,10 +212,8 @@ def stats_period_days(period: str) -> list[str]:
     elif period == "Year":
         start = today - timedelta(days=364)
     elif period == "All time":
-        con = connect_sqlite(APP_DB)
-        row = con.execute("SELECT MIN(event_date) FROM study_events").fetchone()
-        con.close()
-        start = date.fromisoformat(row[0]) if row and row[0] else today - timedelta(days=6)
+        first = words.first_event_date()
+        start = date.fromisoformat(first) if first else today - timedelta(days=6)
     else:
         start = today - timedelta(days=6)
     days_count = (today - start).days + 1
@@ -339,37 +229,16 @@ def statistics_data(days: list[str], categories: list[str]) -> tuple[dict[str, d
     if not days:
         return data, period_totals, total_totals, 0
 
-    con = connect_sqlite(APP_DB)
     start, end = days[0], days[-1]
-    for row in con.execute(
-        """
-        SELECT event_date, event_type, COUNT(DISTINCT word_id) AS amount
-        FROM study_events
-        WHERE event_date BETWEEN ? AND ?
-        GROUP BY event_date, event_type
-        """,
-        (start, end),
-    ):
+    for row in words.event_counts_between(start, end):
         event_type = row["event_type"]
         if event_type in data.get(row["event_date"], {}):
             amount = int(row["amount"] or 0)
             data[row["event_date"]][event_type] = amount
             period_totals[event_type] += amount
 
-    for row in con.execute(
-        """
-        SELECT event_type, COUNT(DISTINCT word_id || ':' || event_date) AS amount
-        FROM study_events
-        GROUP BY event_type
-        """
-    ):
+    for row in words.event_totals():
         if row["event_type"] in total_totals:
             total_totals[row["event_type"]] = int(row["amount"] or 0)
 
-    category_filter, params = category_filter_sql(categories)
-    where = "WHERE status='new'"
-    if category_filter:
-        where += f" AND {category_filter}"
-    learning_now = con.execute(f"SELECT COUNT(*) FROM words {where}", params).fetchone()[0]
-    con.close()
-    return data, period_totals, total_totals, int(learning_now or 0)
+    return data, period_totals, total_totals, words.count_new_words(categories)

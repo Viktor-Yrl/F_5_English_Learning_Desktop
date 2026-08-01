@@ -3,7 +3,13 @@ import sqlite3
 import time
 from pathlib import Path
 
-from db import APP_DB, DATA_DIR, connect_sqlite
+from db import (
+    APP_DB,
+    DATA_DIR,
+    connect_sqlite,
+    normalized_word_level,
+    propagate_known_word_levels,
+)
 from services import good_series_from_status, reword_learned_series, status_from_good_series
 
 
@@ -103,12 +109,13 @@ def import_reword_backup(path: Path) -> None:
         mnemonic_image = ""
         if picture_id and picture_id in pictures:
             mnemonic_image = save_picture_blob(int(row["ID"] or 0), picture_id, pictures[picture_id])
+        category = word_categories.get(row["ID"], "Imported")
         rows_to_insert.append(
             (
                 english,
                 row["RUS"] or "",
-                row["EXT_SOURCE_ID"] or "A1",
-                word_categories.get(row["ID"], "Imported"),
+                normalized_word_level(category, row["EXT_SOURCE_ID"] or "A1"),
+                category,
                 status,
                 int(row["ID"] or 0),
                 total_answers,
@@ -127,6 +134,7 @@ def import_reword_backup(path: Path) -> None:
         """,
         rows_to_insert,
     )
+    propagate_known_word_levels(target)
     if "DAILY_GOAL" in tables:
         row = source.execute("SELECT GOAL FROM DAILY_GOAL ORDER BY DATE DESC LIMIT 1").fetchone()
         if row and row["GOAL"]:
